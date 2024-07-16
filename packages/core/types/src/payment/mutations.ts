@@ -187,11 +187,6 @@ export interface CreateCaptureDTO {
   amount?: BigNumberInput
 
   /**
-   * The associated payment's ID.
-   */
-  payment_id: string
-
-  /**
    * Who captured the payment. For example,
    * a user's ID.
    */
@@ -208,15 +203,10 @@ export interface CreateRefundDTO {
   amount?: BigNumberInput
 
   /**
-   * The associated payment's ID.
-   */
-  payment_id: string
-
-  /**
    * Who refunded the payment. For example,
    * a user's ID.
    */
-  created_by?: string
+  refunded_by?: string
 }
 
 /**
@@ -229,6 +219,11 @@ export interface CreatePaymentSessionDTO {
   provider_id: string
 
   /**
+   * The provider's payment method token
+   */
+  provider_token?: string
+
+  /**
    * The ISO 3 character currency code of the payment session.
    */
   currency_code: string
@@ -237,11 +232,6 @@ export interface CreatePaymentSessionDTO {
    * The amount to be authorized.
    */
   amount: BigNumberInput
-
-  /**
-   * Necessary data for the associated payment provider to process the payment.
-   */
-  data: Record<string, unknown>
 
   /**
    * Necessary context data for the associated payment provider.
@@ -259,24 +249,29 @@ export interface UpdatePaymentSessionDTO {
   id: string
 
   /**
-   * Necessary data for the associated payment provider to process the payment.
+   * The provider's payment method token
    */
-  data: Record<string, unknown>
-
-  /**
-   * The ISO 3 character currency code.
-   */
-  currency_code: string
+  provider_token?: string
 
   /**
    * The amount to be authorized.
    */
-  amount: BigNumberInput
+  amount?: BigNumberInput
 
   /**
    * Necessary context data for the associated payment provider.
    */
   context?: PaymentProviderContext
+}
+
+/**
+ * The attributes to authorize in a payment session.
+ */
+export interface AuthorizePaymentSessionDTO {
+  /**
+   * The provider token to authorize payment session
+   */
+  provider_token?: string
 }
 
 /**

@@ -80,7 +80,6 @@ export const deletePaymentSessionsStep = createStep(
         provider_id: paymentSession.provider_id,
         currency_code: paymentSession.currency_code,
         amount: paymentSession.amount,
-        data: paymentSession.data ?? {},
         context: paymentSession.context,
       }
 

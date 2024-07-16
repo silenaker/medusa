@@ -24,3 +24,4 @@ build/**
 **/stats
 .favorites.json
 .vscode
+.history

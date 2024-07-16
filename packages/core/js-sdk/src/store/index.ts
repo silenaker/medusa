@@ -313,6 +313,22 @@ export class Store {
         query,
       })
     },
+
+    addPaymentSession: async (
+      paymentCollectionId: string,
+      body: Record<string, any>,
+      query?: SelectParams,
+      headers?: ClientHeaders
+    ) => {
+      return this.client.fetch<{
+        payment_collection: HttpTypes.StorePaymentCollection
+      }>(`/store/payment-collections/${paymentCollectionId}/payment-sessions`, {
+        method: "POST",
+        headers,
+        body,
+        query,
+      })
+    },
   }
 
   public order = {

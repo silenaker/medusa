@@ -1,4 +1,9 @@
-import { PaymentProviderContext, PaymentSessionDTO } from "@medusajs/types"
+import {
+  BigNumberInput,
+  PaymentProviderContext,
+  PaymentSessionDTO,
+} from "@medusajs/types"
+import { MathBN, PaymentSessionStatus } from "@medusajs/utils"
 import {
   WorkflowData,
   createWorkflow,
@@ -12,8 +17,10 @@ import { deletePaymentSessionsWorkflow } from "./delete-payment-sessions"
 interface WorkflowInput {
   payment_collection_id: string
   provider_id: string
+  provider_token?: string
   data?: Record<string, unknown>
   context?: PaymentProviderContext
+  amount?: BigNumberInput
 }
 
 export const createPaymentSessionsWorkflowId = "create-payment-sessions"
@@ -22,7 +29,13 @@ export const createPaymentSessionsWorkflow = createWorkflow(
   (input: WorkflowData<WorkflowInput>): WorkflowData<PaymentSessionDTO> => {
     const paymentCollection = useRemoteQueryStep({
       entry_point: "payment_collection",
-      fields: ["id", "amount", "currency_code", "payment_sessions.*"],
+      fields: [
+        "id",
+        "raw_amount",
+        "raw_authorized_amount",
+        "currency_code",
+        "payment_sessions.*",
+      ],
       variables: { id: input.payment_collection_id },
       list: false,
     })
@@ -30,38 +43,22 @@ export const createPaymentSessionsWorkflow = createWorkflow(
     const paymentSessionInput = transform(
       { paymentCollection, input },
       (data) => {
+        const balance = MathBN.sub(
+          data.paymentCollection.raw_amount,
+          data.paymentCollection.raw_authorized_amount || 0
+        )
         return {
           payment_collection_id: data.input.payment_collection_id,
           provider_id: data.input.provider_id,
+          provider_token: data.input.provider_token,
           data: data.input.data,
           context: data.input.context,
-          amount: data.paymentCollection.amount,
+          amount: MathBN.min(data.input.amount || balance, balance),
           currency_code: data.paymentCollection.currency_code,
         }
       }
     )
 
-    const deletePaymentSessionInput = transform(
-      { paymentCollection },
-      (data) => {
-        return {
-          ids:
-            data.paymentCollection?.payment_sessions?.map((ps) => ps.id) || [],
-        }
-      }
-    )
-
-    // Note: We are deleting an existing active session before creating a new one
-    // for a payment collection as we don't support split payments at the moment.
-    // When we are ready to accept split payments, this along with other workflows
-    // need to be handled correctly
-    const [created] = parallelize(
-      createPaymentSessionStep(paymentSessionInput),
-      deletePaymentSessionsWorkflow.runAsStep({
-        input: deletePaymentSessionInput,
-      })
-    )
-
-    return created
+    return createPaymentSessionStep(paymentSessionInput)
   }
 )

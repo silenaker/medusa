@@ -58,6 +58,9 @@ export default class Refund {
   created_by: string | null = null
 
   @Property({ columnType: "jsonb", nullable: true })
+  data: Record<string, unknown> | null = null
+
+  @Property({ columnType: "jsonb", nullable: true })
   metadata: Record<string, unknown> | null = null
 
   @BeforeCreate()

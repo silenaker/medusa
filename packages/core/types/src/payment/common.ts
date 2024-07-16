@@ -4,19 +4,24 @@ import { BigNumberValue } from "../totals"
 /* ********** PAYMENT COLLECTION ********** */
 
 export type PaymentCollectionStatus =
-  | "not_paid"
-  | "awaiting"
+  | "pending"
+  | "paid"
+  | "partially_paid"
   | "authorized"
   | "partially_authorized"
-  | "canceled"
+  | "refunded"
+  | "partially_refunded"
 
 export type PaymentSessionStatus =
   | "authorized"
   | "captured"
+  | "partially_captured"
+  | "refunded"
+  | "partially_refunded"
   | "pending"
   | "requires_more"
-  | "error"
   | "canceled"
+  | "processing"
 
 /**
  * The payment collection details.

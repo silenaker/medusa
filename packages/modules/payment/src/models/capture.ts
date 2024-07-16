@@ -62,6 +62,12 @@ export default class Capture {
   @Property({ columnType: "text", nullable: true })
   created_by: string | null = null
 
+  @Property({ columnType: "jsonb", nullable: true })
+  data: Record<string, unknown> | null = null
+
+  @Property({ columnType: "jsonb", nullable: true })
+  metadata: Record<string, unknown> | null = null
+
   @BeforeCreate()
   onCreate() {
     this.id = generateEntityId(this.id, "capt")

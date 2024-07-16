@@ -95,9 +95,9 @@ export default class PaymentCollection {
 
   @Enum({
     items: () => PaymentCollectionStatus,
-    default: PaymentCollectionStatus.NOT_PAID,
+    default: PaymentCollectionStatus.PENDING,
   })
-  status: PaymentCollectionStatus = PaymentCollectionStatus.NOT_PAID
+  status: PaymentCollectionStatus = PaymentCollectionStatus.PENDING
 
   @ManyToMany(() => PaymentProvider)
   payment_providers = new Collection<Rel<PaymentProvider>>(this)

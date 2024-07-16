@@ -1,37 +1,37 @@
 import {
+  AuthorizePaymentProviderSession,
+  BigNumberInput,
   CreatePaymentProviderSession,
   IPaymentProvider,
   MedusaContainer,
   PaymentProviderError,
   PaymentProviderSessionResponse,
-  PaymentSessionStatus,
   ProviderWebhookPayload,
   UpdatePaymentProviderSession,
-  WebhookActionResult
 } from "@medusajs/types"
 
 /**
  * ## Overview
  *
  * A payment provider is used to handle and process payments, such as authorizing, capturing, and refund payments.
- * 
+ *
  * :::note
- * 
+ *
  * This guide is a work in progress.
- * 
+ *
  * :::
- * 
+ *
  * ---
- * 
+ *
  * ## How to Create a Payment Provider
- * 
+ *
  * A payment provider is a TypeScript or JavaScript class that extends the `AbstractPaymentProvider` class imported from `@medusajsa/utils`.
- * 
+ *
  * You can create the payment provider in a module or plugin, then pass that module/plugin in the Payment Module's `providers` option. You can also pass the path to the file
  * that defines the provider if it's created in the Medusa application's codebase.
- * 
+ *
  * For example:
- * 
+ *
  * ```ts
  * abstract class MyPayment extends AbstractPaymentProvider<MyConfigurations> {
  *   // ...
@@ -39,23 +39,23 @@ import {
  * ```
  *
  * ---
- * 
+ *
  * ## Configuration Type Parameter
- * 
+ *
  * The `AbstractPaymentProvider` class accepts an optional type parameter that defines the type of configuration that your payment provider expects.
- * 
+ *
  * For example:
- * 
+ *
  * ```ts
  * interface MyConfigurations {
  *   apiKey: string
  * }
- * 
+ *
  * abstract class MyPayment extends AbstractPaymentProvider<MyConfigurations> {
  *   // ...
  * }
  * ```
- * 
+ *
  * ---
  *
  * ## Identifier Property
@@ -122,7 +122,7 @@ import {
  *
  *   // used in other methods
  *   async retrievePayment(
- *     paymentSessionData: Record<string, unknown>
+ *     paymentSessionData: PaymentProviderSessionResponse["data"]
  *   ): Promise<
  *     PaymentProviderError |
  *     PaymentProviderSessionResponse["session_data"]
@@ -215,52 +215,42 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
   }
 
   abstract capturePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    captureAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract authorizePayment(
-    paymentSessionData: Record<string, unknown>,
-    context: Record<string, unknown>
-  ): Promise<
-    | PaymentProviderError
-    | {
-        status: PaymentSessionStatus
-        data: PaymentProviderSessionResponse["data"]
-      }
-  >
+    data: AuthorizePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract cancelPayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract initiatePayment(
-    context: CreatePaymentProviderSession
+    data: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract deletePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
-
-  abstract getPaymentStatus(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentSessionStatus>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | void>
 
   abstract refundPayment(
-    paymentSessionData: Record<string, unknown>,
-    refundAmount: number
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    refundAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract updatePayment(
-    context: UpdatePaymentProviderSession
+    data: UpdatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   abstract getWebhookActionAndData(
     data: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult>
+  ): Promise<PaymentProviderSessionResponse>
 }
 
 /**
