@@ -19,6 +19,7 @@ import {
   RefundReasonDTO,
 } from "./common"
 import {
+  AuthorizePaymentSessionDTO,
   CreateCaptureDTO,
   CreatePaymentCollectionDTO,
   CreatePaymentSessionDTO,
@@ -466,7 +467,7 @@ export interface IPaymentModuleService extends IModuleService {
    *       provider_id: "stripe",
    *       currency_code: "usd",
    *       amount: 3000,
-   *       data: {},
+   *       context: {},
    *     }
    *   )
    */
@@ -502,7 +503,7 @@ export interface IPaymentModuleService extends IModuleService {
    *
    * @param {string} id - The ID of the payment session.
    * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
-   * @returns {Promise<void>} Resolves whent the payment session is deleted successfully.
+   * @returns {Promise<void>} Resolves when the payment session is deleted successfully.
    *
    * @example
    * await paymentModuleService.deletePaymentSession("payses_123")
@@ -515,20 +516,16 @@ export interface IPaymentModuleService extends IModuleService {
    * Learn more about the payment flow in [this guide](https://docs.medusajs.com/experimental/payment/payment-flow/)
    *
    * @param {string} id - The payment session's ID.
-   * @param {Record<string, unknown>} context - Context data to pass to the associated payment provider.
+   * @param {AuthorizePaymentSessionDTO} data - The attributes to authorize in a payment session.
    * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
    * @returns {Promise<PaymentDTO>} The created payment.
    *
    * @example
-   * const payment =
-   *   await paymentModuleService.authorizePaymentSession(
-   *     "payses_123",
-   *     {}
-   *   )
+   * await paymentModuleService.authorizePaymentSession("payses_123", { provider_token: "" })
    */
   authorizePaymentSession(
     id: string,
-    context: Record<string, unknown>,
+    data?: AuthorizePaymentSessionDTO,
     sharedContext?: Context
   ): Promise<PaymentDTO>
 
@@ -664,35 +661,34 @@ export interface IPaymentModuleService extends IModuleService {
    *
    * Learn more about the payment flow in [this guide](https://docs.medusajs.com/experimental/payment/payment-flow/)
    *
+   * @param {string} paymentId - The ID of the payment to create the capture for.
    * @param {CreateCaptureDTO} data - The payment capture to be created.
    * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
    * @returns {Promise<PaymentDTO>} The payment's details.
    *
    * @example
-   * const payment = await paymentModuleService.capturePayment({
-   *   payment_id: "pay_123",
-   * })
+   * const payment = await paymentModuleService.capturePayment("pay_123")
    */
   capturePayment(
-    data: CreateCaptureDTO,
+    paymentId: string,
+    data?: CreateCaptureDTO,
     sharedContext?: Context
   ): Promise<PaymentDTO>
 
   /**
    * This method refunds a payment using its associated payment provider. An amount can only be refunded if it has been captured first.
    *
+   * @param {string} paymentId - The ID of the payment to create the refund for.
    * @param {CreateRefundDTO} data - The refund to be created.
    * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
    * @returns {Promise<PaymentDTO>} The payment's details.
    *
    * @example
-   * const payment = await paymentModuleService.refundPayment({
-   *   payment_id: "pay_123",
-   *   amount: 300,
-   * })
+   * const payment = await paymentModuleService.refundPayment("pay_123", { amount: 300 })
    */
   refundPayment(
-    data: CreateRefundDTO,
+    paymentId: string,
+    data?: CreateRefundDTO,
     sharedContext?: Context
   ): Promise<PaymentDTO>
 

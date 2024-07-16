@@ -7,19 +7,9 @@ export class Migration20240806072619 extends Migration {
     )
 
     this.addSql(
-      'alter table if exists "payment_session" drop constraint if exists "payment_session_status_check";'
-    )
-
-    this.addSql(
       'alter table if exists "payment_session" drop constraint if exists "payment_session_payment_collection_id_foreign";'
     )
 
-    this.addSql(
-      'alter table if exists "payment_session" alter column "status" type text using ("status"::text);'
-    )
-    this.addSql(
-      "alter table if exists \"payment_session\" add constraint \"payment_session_status_check\" check (\"status\" in ('authorized', 'captured', 'pending', 'requires_more', 'error', 'canceled'));"
-    )
     this.addSql(
       'create index if not exists "IDX_payment_session_deleted_at" on "payment_session" ("deleted_at");'
     )
@@ -48,10 +38,6 @@ export class Migration20240806072619 extends Migration {
   async down(): Promise<void> {
     this.addSql('drop table if exists "refund_reason" cascade;')
 
-    this.addSql(
-      'alter table if exists "payment_session" drop constraint if exists "payment_session_status_check";'
-    )
-
     this.addSql('drop index if exists "IDX_capture_deleted_at";')
 
     this.addSql('drop index if exists "IDX_payment_payment_session_id";')
@@ -65,12 +51,6 @@ export class Migration20240806072619 extends Migration {
       'create index if not exists "IDX_refund_deleted_at" on "payment" ("deleted_at");'
     )
 
-    this.addSql(
-      'alter table if exists "payment_session" alter column "status" type text using ("status"::text);'
-    )
-    this.addSql(
-      "alter table if exists \"payment_session\" add constraint \"payment_session_status_check\" check (\"status\" in ('authorized', 'pending', 'requires_more', 'error', 'canceled'));"
-    )
     this.addSql('drop index if exists "IDX_payment_session_deleted_at";')
     this.addSql('drop index if exists "IDX_refund_deleted_at";')
     this.addSql(

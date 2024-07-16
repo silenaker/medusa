@@ -1,15 +1,145 @@
 import {
+  AuthorizePaymentProviderSession,
+  BigNumberInput,
   CreatePaymentProviderSession,
   IPaymentProvider,
   MedusaContainer,
   PaymentProviderError,
   PaymentProviderSessionResponse,
-  PaymentSessionStatus,
   ProviderWebhookPayload,
   UpdatePaymentProviderSession,
-  WebhookActionResult,
 } from "@medusajs/types"
 
+/**
+ * ## Overview
+ *
+ * A payment provider is used to handle and process payments, such as authorizing, capturing, and refund payments.
+ *
+ * :::note
+ *
+ * This guide is a work in progress.
+ *
+ * :::
+ *
+ * ---
+ *
+ * ## How to Create a Payment Provider
+ *
+ * A payment provider is a TypeScript or JavaScript class that extends the `AbstractPaymentProvider` class imported from `@medusajsa/utils`.
+ *
+ * You can create the payment provider in a module or plugin, then pass that module/plugin in the Payment Module's `providers` option. You can also pass the path to the file
+ * that defines the provider if it's created in the Medusa application's codebase.
+ *
+ * For example:
+ *
+ * ```ts
+ * abstract class MyPayment extends AbstractPaymentProvider<MyConfigurations> {
+ *   // ...
+ * }
+ * ```
+ *
+ * ---
+ *
+ * ## Configuration Type Parameter
+ *
+ * The `AbstractPaymentProvider` class accepts an optional type parameter that defines the type of configuration that your payment provider expects.
+ *
+ * For example:
+ *
+ * ```ts
+ * interface MyConfigurations {
+ *   apiKey: string
+ * }
+ *
+ * abstract class MyPayment extends AbstractPaymentProvider<MyConfigurations> {
+ *   // ...
+ * }
+ * ```
+ *
+ * ---
+ *
+ * ## Identifier Property
+ *
+ * The `PaymentProvider` data model has 2 properties: `id` and `is_enabled`.
+ *
+ * ```ts
+ * class MyPaymentProvider extends AbstractPaymentProvider<MyConfigurations> {
+ *   static identifier = "my-payment"
+ *   // ...
+ * }
+ * ```
+ *
+ * ---
+ *
+ * ## PROVIDER Property
+ *
+ * The `PROVIDER` static property is used when registering the provider in the module's container. Typically, it would have the
+ * same value as the `identifier` property.
+ *
+ * ```ts
+ * class MyPaymentProvider extends AbstractPaymentProvider<MyConfigurations> {
+ *   static PROVIDER = "my-payment"
+ *   // ...
+ * }
+ * ```
+ *
+ * ---
+ *
+ * ## PaymentProviderError
+ *
+ * Before diving into the methods of the Payment Provider, you'll notice that part of the expected return signature of these method includes `PaymentProviderError`.
+ *
+ * ```ts
+ * interface PaymentProviderError {
+ *   error: string
+ *   code?: string
+ *   detail?: any
+ * }
+ * ```
+ *
+ * While implementing the Payment Provider's methods, if you need to inform the Payment Module that an error occurred at a certain stage,
+ * return an object having the attributes defined in the `PaymentProviderError` interface.
+ *
+ * For example, the Stripe payment provider has the following method to create the error object, which is used within other methods:
+ *
+ * ```ts
+ * abstract class StripeBase extends AbstractPaymentProvider {
+ *   // ...
+ *   protected buildError(
+ *    message: string,
+ *    error: Stripe.StripeRawError | PaymentProviderError | Error
+ *  ): PaymentProviderError {
+ *    return {
+ *      error: message,
+ *      code: "code" in error ? error.code : "unknown",
+ *      detail: isPaymentProviderError(error)
+ *        ? `${error.error}${EOL}${error.detail ?? ""}`
+ *        : "detail" in error
+ *        ? error.detail
+ *        : error.message ?? "",
+ *    }
+ *  }
+ *
+ *   // used in other methods
+ *   async retrievePayment(
+ *     paymentSessionData: PaymentProviderSessionResponse["data"]
+ *   ): Promise<
+ *     PaymentProviderError |
+ *     PaymentProviderSessionResponse["session_data"]
+ *   > {
+ *     try {
+ *       // ...
+ *     } catch (e) {
+ *       return this.buildError(
+ *         "An error occurred in retrievePayment",
+ *         e
+ *       )
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ */
 export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
   implements IPaymentProvider
 {
@@ -168,8 +298,9 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract capturePayment(
-    paymentData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    captureAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
    * This method authorizes a payment session. When authorized successfully, a payment is created by the Payment
@@ -233,21 +364,8 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract authorizePayment(
-    paymentSessionData: Record<string, unknown>,
-    context: Record<string, unknown>
-  ): Promise<
-    | PaymentProviderError
-    | {
-        /**
-         * The new status of the payment.
-         */
-        status: PaymentSessionStatus
-        /**
-         * The data to store in the created payment's `data` property.
-         */
-        data: PaymentProviderSessionResponse["data"]
-      }
-  >
+    data: AuthorizePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
    * This method cancels a payment.
@@ -287,8 +405,8 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract cancelPayment(
-    paymentData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
    * This method is used when a payment session is created. It can be used to initiate the payment
@@ -342,7 +460,7 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract initiatePayment(
-    context: CreatePaymentProviderSession
+    data: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
@@ -387,55 +505,8 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract deletePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
-
-  /**
-   * This method gets the status of a payment session based on the status in the third-party integration.
-   *
-   * @param paymentSessionData - The `data` property of the payment session. Make sure to store in it
-   * any helpful identification for your third-party integration.
-   * @returns The payment session's status.
-   *
-   * @example
-   * // other imports...
-   * import {
-   *   PaymentSessionStatus
-   * } from "@medusajs/types"
-   *
-   *
-   * class MyPaymentProviderService extends AbstractPaymentProvider<
-   *   Options
-   * > {
-   *   async getPaymentStatus(
-   *     paymentSessionData: Record<string, unknown>
-   *   ): Promise<PaymentSessionStatus> {
-   *     const externalId = paymentSessionData.id
-   *
-   *     try {
-   *       const status = await this.client.getStatus(externalId)
-   *
-   *       switch (status) {
-   *         case "requires_capture":
-   *           return "authorized"
-   *         case "success":
-   *           return "captured"
-   *         case "canceled":
-   *           return "canceled"
-   *         default:
-   *           return "pending"
-   *       }
-   *     } catch (e) {
-   *       return "error"
-   *     }
-   *   }
-   *
-   *   // ...
-   * }
-   */
-  abstract getPaymentStatus(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentSessionStatus>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | void>
 
   /**
    * This method refunds an amount of a payment previously captured.
@@ -487,9 +558,9 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract refundPayment(
-    paymentData: Record<string, unknown>,
-    refundAmount: number
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    refundAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
    * Retrieves the payment's data from the third-party service.
@@ -531,8 +602,8 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
    * Update a payment in the third-party service that was previously initiated with the {@link initiatePayment} method.
@@ -593,7 +664,7 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    * }
    */
   abstract updatePayment(
-    context: UpdatePaymentProviderSession
+    data: UpdatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   /**
@@ -668,7 +739,7 @@ export abstract class AbstractPaymentProvider<TConfig = Record<string, unknown>>
    */
   abstract getWebhookActionAndData(
     data: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult>
+  ): Promise<PaymentProviderSessionResponse>
 }
 
 /**

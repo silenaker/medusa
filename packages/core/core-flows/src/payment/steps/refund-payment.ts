@@ -4,7 +4,7 @@ import { StepResponse, createStep } from "@medusajs/workflows-sdk"
 
 export type RefundPaymentStepInput = {
   payment_id: string
-  created_by?: string
+  refunded_by?: string
   amount?: BigNumberInput
 }
 
@@ -19,7 +19,10 @@ export const refundPaymentStep = createStep(
       ModuleRegistrationName.PAYMENT
     )
 
-    const payment = await paymentModule.refundPayment(input)
+    const payment = await paymentModule.refundPayment(input.payment_id, {
+      amount: input.amount,
+      refunded_by: input.refunded_by,
+    })
 
     return new StepResponse(payment)
   }

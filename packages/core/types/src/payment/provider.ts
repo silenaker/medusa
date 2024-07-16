@@ -10,25 +10,16 @@ import { ProviderWebhookPayload } from "./mutations"
 export type PaymentAddressDTO = Partial<AddressDTO>
 
 /**
- * The customer associated with the payment.
+ * The customer of the payment.
  */
 export type PaymentCustomerDTO = Partial<CustomerDTO>
 
 /**
- * Normalized events from payment provider to internal payment module events.
- */
-export type PaymentActions =
-  | "authorized"
-  | "captured"
-  | "failed"
-  | "not_supported"
-
-/**
  * @interface
  *
- * Context data provided to the payment provider when authorizing a payment session.
+ * Context data provided to the payment provider.
  */
-export type PaymentProviderContext = {
+export type PaymentProviderContext = Record<string, unknown> & {
   /**
    * The payment's billing address.
    */
@@ -40,26 +31,30 @@ export type PaymentProviderContext = {
   email?: string
 
   /**
-   * The ID of payment session the provider payment is associated with.
+   * The associated payment session's ID.
    */
   session_id?: string
 
   /**
-   * The customer associated with this payment.
+   * The associated cart's ID.
    */
-  customer?: PaymentCustomerDTO
+  cart_id?: string
 
   /**
-   * The extra fields specific to the provider session.
+   * The associated order's ID.
    */
-  extra?: Record<string, unknown>
+  order_id?: string
+
+  /**
+   * The associated customer detail
+   */
+  customer?: PaymentCustomerDTO
 }
 
 /**
  * @interface
  *
- * The data used initiate a payment in a provider when a payment
- * session is created.
+ * The data used initiate a payment in a provider
  */
 export type CreatePaymentProviderSession = {
   /**
@@ -76,33 +71,55 @@ export type CreatePaymentProviderSession = {
    * The ISO 3 character currency code.
    */
   currency_code: string
+
+  /*
+   * The payment method token
+   */
+  token?: string
 }
 
 /**
  * @interface
  *
- * The attributes to update a payment related to a payment session in a provider.
+ * The attributes to update a payment in a provider.
  */
 export type UpdatePaymentProviderSession = {
-  /**
-   * A payment's context.
-   */
-  context: PaymentProviderContext
-
   /**
    * The `data` field of the payment session.
    */
   data: Record<string, unknown>
 
   /**
-   * The payment session's amount.
+   * A context necessary for the payment provider.
    */
-  amount: BigNumberInput
+  context?: PaymentProviderContext
 
   /**
-   * The ISO 3 character code of the payment session.
+   * The amount to be authorized.
    */
-  currency_code: string
+  amount?: BigNumberInput
+
+  /*
+   * The payment method token
+   */
+  token?: string
+}
+
+/**
+ * @interface
+ *
+ * The attributes to authorize a payment in a provider.
+ */
+export type AuthorizePaymentProviderSession = {
+  /**
+   * The `data` field of the payment session.
+   */
+  data: Record<string, unknown>
+
+  /*
+   * The payment method token
+   */
+  token?: string
 }
 
 /**
@@ -112,45 +129,67 @@ export type UpdatePaymentProviderSession = {
  */
 export type PaymentProviderSessionResponse = {
   /**
-   * The data to be stored in the `data` field of the Payment Session to be created.
-   * The `data` field is useful to hold any data required by the third-party provider to process the payment or retrieve its details at a later point.
-   */
-  data: Record<string, unknown>
-}
-
-/**
- * @interface
- *
- * The successful result of authorizing a payment session using a payment provider.
- */
-export type PaymentProviderAuthorizeResponse = {
-  /**
    * The status of the payment, which will be stored in the payment session's `status` field.
    */
   status: PaymentSessionStatus
 
   /**
-   * The `data` to be stored in the payment session's `data` field.
+   * The captured amount of the payment
    */
-  data: PaymentProviderSessionResponse["data"]
-}
-
-/**
- * @interface
- *
- * The details of which payment provider to use to perform an action, and what
- * data to be passed to that provider.
- */
-export type PaymentProviderDataInput = {
-  /**
-   * The ID of the provider to be used to perform an action.
-   */
-  provider_id: string
+  capturedAmount: BigNumberValue
 
   /**
-   * The data to be passed to the provider.
+   * The refunded amount of the payment
+   */
+  refundedAmount: BigNumberValue
+
+  /**
+   * The data to be stored in the `data` field of the Payment Session to be created.
+   * The `data` field is useful to hold any data required by the third-party provider to process the payment or retrieve its details at a later point.
    */
   data: Record<string, unknown>
+
+  /**
+   * A context necessary for the payment provider.
+   */
+  context: PaymentProviderContext
+
+  /**
+   * The related event or mutation occurred on a payment.
+   */
+  event?: {
+    /**
+     * Event type that related to changes in provider payment
+     */
+    type: "authorize" | "capture" | "refund" | "cancel"
+
+    /**
+     * The event's details.
+     */
+    detail?: {
+      /**
+       * The amount to be changed
+       */
+      amount?: BigNumberValue
+
+      /**
+       * Who captured the payment. For example,
+       * a user's ID.
+       */
+      captured_by?: string
+
+      /**
+       * Who refunded the payment. For example,
+       * a user's ID.
+       */
+      refunded_by?: string
+
+      /**
+       * The reason to be canceled
+       */
+      reason?: string
+    }
+  }
 }
 
 /**
@@ -173,47 +212,6 @@ export interface PaymentProviderError {
   detail?: any
 }
 
-/**
- * @interface
- *
- * The details of an action to be performed as a result of a received webhook event.
- */
-export type WebhookActionData = {
-  /**
-   * The associated payment session's ID.
-   */
-  session_id: string
-
-  /**
-   * The amount to be captured or authorized (based on the action's type.)
-   */
-  amount: BigNumberValue
-}
-
-/**
- * @interface
- *
- * The actions that the payment provider informs the Payment Module to perform.
- */
-export type WebhookActionResult =
-  | {
-      /**
-       * Received an event that is not processable.
-       */
-      action: "not_supported"
-    }
-  | {
-      /**
-       * Normalized events from payment provider to internal payment module events.
-       */
-      action: PaymentActions
-
-      /**
-       * The webhook action's details.
-       */
-      data: WebhookActionData
-    }
-
 export interface IPaymentProvider {
   /**
    * @ignore
@@ -222,45 +220,109 @@ export interface IPaymentProvider {
    */
   getIdentifier(): string
 
+  /**
+   * This methods sends a request to the third-party provider to initialize the payment. It's called when the payment session is created.
+   *
+   * For example, in the Stripe provider, this method is used to create a Payment Intent for the customer.
+   *
+   * @param {CreatePaymentProviderSession} data - The data necessary to initiate the payment.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   initiatePayment(
     data: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is used to update a payment associated with a session in the third-party provider.
+   *
+   * @param {UpdatePaymentProviderSession} data - The data related to the update.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   updatePayment(
-    context: UpdatePaymentProviderSession
+    data: UpdatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is called before a payment session is deleted. It's used to perform any actions necessary before the deletion.
+   *
+   * @param {Record<string, unknown>} paymentSessionData - The `data` field of the Payment Session.
+   * @returns {Promise<PaymentProviderError | void>}  Either an error object or null if successful.
+   */
   deletePayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+  ): Promise<PaymentProviderError | void>
 
+  /**
+   * This method is called when a payment session should be authorized.
+   * You can interact with a third-party provider and perform the necessary actions to authorize the payment.
+   *
+   * Refer to [this guide](https://docs.medusajs.com/experimental/payment/payment-flow/#3-authorize-payment-session)
+   * to learn more about how this fits into the payment flow and how to handle required actions.
+   *
+   * @param {AuthorizePaymentProviderSession} data - The data related to authorize.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   authorizePayment(
-    paymentSessionData: Record<string, unknown>,
-    context: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderAuthorizeResponse>
+    data: AuthorizePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is called when a payment should be captured. The payment is captured in one of the following scenarios:
+   *
+   * - The payment provider supports automatically capturing the payment after authorization.
+   * - The merchant requests to capture the payment after its associated payment session was authorized.
+   * - A webhook event occurred that instructs the payment provider to capture the payment session. Learn more about handing webhook events in [this guide](https://docs.medusajs.com/experimental/payment/webhook-events/)
+   *
+   * In this method, you can interact with the third-party provider and perform any actions necessary to capture the payment.
+   *
+   * @param {Record<string, unknown>} paymentSessionData - The `data` field of the Payment Session.
+   * @param {BigNumberInput} captureAmount - The amount to capture.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   capturePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    paymentSessionData: Record<string, unknown>,
+    captureAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is called when a payment should be refunded. This is typically triggered manually by the merchant.
+   *
+   * In this method, you can interact with the third-party provider and perform any actions necessary to refund the payment.
+   *
+   * @param {Record<string, unknown>} paymentSessionData - The `data` field of the Payment Session.
+   * @param {BigNumberInput} refundAmount - The amount to refund.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   refundPayment(
     paymentSessionData: Record<string, unknown>,
-    refundAmount: BigNumberInput
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+    refundAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is used to provide a uniform way of retrieving the payment information from the third-party provider.
+   *
+   * For example, in Stripe’s payment provider this method is used to retrieve the payment intent details from Stripe.
+   *
+   * @param {Record<string, unknown>} paymentSessionData - The `data` field of the Payment Session.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   retrievePayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
+  /**
+   * This method is called when a payment is canceled.
+   *
+   * In this method, you can interact with the third-party provider and perform any actions necessary to cancel the payment.
+   *
+   * @param {Record<string, unknown>} paymentSessionData - The `data` field of the Payment Session.
+   * @returns {Promise<PaymentProviderError | PaymentProviderSessionResponse>} Either the payment's status and data or an error object.
+   */
   cancelPayment(
     paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]>
-
-  getPaymentStatus(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentSessionStatus>
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse>
 
   getWebhookActionAndData(
     data: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult>
+  ): Promise<PaymentProviderSessionResponse>
 }

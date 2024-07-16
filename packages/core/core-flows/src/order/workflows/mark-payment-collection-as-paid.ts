@@ -19,10 +19,10 @@ import { createPaymentSessionsWorkflow } from "../../payment-collection"
 export const throwUnlessPaymentCollectionNotPaid = createStep(
   "validate-existing-payment-collection",
   ({ paymentCollection }: { paymentCollection: PaymentCollectionDTO }) => {
-    if (paymentCollection.status !== "not_paid") {
+    if (paymentCollection.status !== "pending") {
       throw new MedusaError(
         MedusaError.Types.NOT_ALLOWED,
-        `Can only mark 'not_paid' payment collection as paid`
+        `Can only mark 'pending' payment collection as paid`
       )
     }
   }

@@ -50,7 +50,7 @@ export const createOrUpdateOrderPaymentCollectionWorkflow = createWorkflow(
       variables: {
         filters: {
           id: orderPaymentCollectionIds,
-          status: [PaymentCollectionStatus.NOT_PAID],
+          status: [PaymentCollectionStatus.PENDING],
         },
       },
       list: false,
