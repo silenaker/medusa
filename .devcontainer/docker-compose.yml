@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../..:/workspaces:cached
+    environment:
+      DB_HOST: localhost
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    command: sleep infinity
+
+  db:
+    image: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    network_mode: service:app
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@domain.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    network_mode: service:app
+
+  redis:
+    image: redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    network_mode: service:app
+
+  redisinsight:
+    image: "redislabs/redisinsight"
+    network_mode: service:app
+
+volumes:
+  postgres-data:
+  redis_data:
