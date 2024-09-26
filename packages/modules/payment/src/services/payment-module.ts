@@ -490,6 +490,76 @@ export default class PaymentModuleService
   }
 
   @InjectManager("baseRepository_")
+  async cancelPaymentSession(
+    id: string,
+    @MedusaContext() sharedContext?: Context
+  ): Promise<PaymentSessionDTO> {
+    const paymentSession = await this.paymentSessionService_.retrieve(
+      id,
+      { select: ["data", "provider_id"] },
+      sharedContext
+    )
+
+    await this.handleProviderSessionResponse_(
+      await this.paymentProviderService_.cancelPayment(
+        paymentSession.provider_id,
+        paymentSession.data
+      ),
+      sharedContext
+    )
+
+    return this.retrievePaymentSession(id, {}, sharedContext)
+  }
+
+  @InjectManager("baseRepository_")
+  private async cancelPaymentSession_(
+    id: string,
+    data?: PaymentProviderSessionResponse["data"],
+    @MedusaContext() sharedContext?: Context
+  ): Promise<PaymentSession> {
+    const session = await this.paymentSessionService_.retrieve(
+      id,
+      { select: ["status"], relations: ["payment"] },
+      sharedContext
+    )
+
+    if (session.status === PaymentSessionStatus.CANCELED) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `The payment session: ${session.id} has been canceled.`
+      )
+    }
+
+    if (
+      session.status !== PaymentSessionStatus.PENDING &&
+      session.status !== PaymentSessionStatus.REQUIRES_MORE &&
+      session.status !== PaymentSessionStatus.AUTHORIZED
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `The payment session: ${session.id} cannot be canceled.`
+      )
+    }
+
+    if (session.payment) {
+      await this.paymentService_.update(
+        {
+          id: session.payment.id,
+          canceled_at: new Date(),
+          data,
+        },
+        sharedContext
+      )
+    }
+
+    const result = await this.paymentSessionService_.update(
+      { id, data, status: PaymentSessionStatus.CANCELED },
+      sharedContext
+    )
+    return result[0]
+  }
+
+  @InjectManager("baseRepository_")
   // @ts-expect-error
   async retrievePaymentSession(
     id: string,
@@ -1075,43 +1145,12 @@ export default class PaymentModuleService
         break
       }
       case "canceled": {
-        await this.paymentSessionService_.update(
-          { id: session_id, data, status },
-          sharedContext
-        )
-        const session = await this.paymentSessionService_.retrieve(
+        const session = await this.cancelPaymentSession_(
           session_id,
-          {
-            select: ["payment_collection_id"],
-            relations: ["payment", "payment.captures"],
-          },
+          data,
           sharedContext
         )
-        if (session.payment) {
-          if (session.payment.captures.length > 0) {
-            await this.paymentService_.update(
-              {
-                id: session.payment.id,
-                captured_at: new Date(),
-                data,
-              },
-              sharedContext
-            )
-          } else {
-            await this.paymentService_.update(
-              {
-                id: session.payment.id,
-                canceled_at: new Date(),
-                data,
-              },
-              sharedContext
-            )
-          }
-
-          await this.maybeUpdatePaymentCollection_(
-            session.payment_collection_id
-          )
-        }
+        await this.maybeUpdatePaymentCollection_(session.payment_collection_id)
         break
       }
       default: {
