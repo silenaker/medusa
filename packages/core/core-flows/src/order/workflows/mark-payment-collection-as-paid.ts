@@ -5,13 +5,14 @@ import {
   WorkflowResponse,
   createStep,
   createWorkflow,
+  when,
 } from "@medusajs/workflows-sdk"
 import { useRemoteQueryStep } from "../../common"
+import { capturePaymentWorkflow } from "../../payment"
 import {
   authorizePaymentSessionStep,
-  capturePaymentWorkflow,
-} from "../../payment"
-import { createPaymentSessionsWorkflow } from "../../payment-collection"
+  createPaymentSessionsWorkflow,
+} from "../../payment-collection"
 
 /**
  * This step validates that the payment collection is not_paid
@@ -63,15 +64,16 @@ export const markPaymentCollectionAsPaid = createWorkflow(
 
     const payment = authorizePaymentSessionStep({
       id: paymentSession.id,
-      context: { order_id: input.order_id },
     })
 
-    capturePaymentWorkflow.runAsStep({
-      input: {
-        payment_id: payment.id,
-        captured_by: input.captured_by,
-        amount: paymentCollection.amount,
-      },
+    when({ payment }, ({ payment }) => !!payment).then(() => {
+      capturePaymentWorkflow.runAsStep({
+        input: {
+          payment_id: payment!.id,
+          captured_by: input.captured_by,
+          amount: paymentCollection.amount,
+        },
+      })
     })
 
     return new WorkflowResponse(payment)

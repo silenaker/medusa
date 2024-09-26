@@ -3,7 +3,7 @@ import {
   WorkflowResponse,
   createWorkflow,
 } from "@medusajs/workflows-sdk"
-import { cancelPaymentSessionStep } from "../steps/cancel-payment-session"
+import { cancelPaymentSessionStep } from "../steps"
 
 export const cancelPaymentSessionWorkflowId = "cancel-payment-session-workflow"
 

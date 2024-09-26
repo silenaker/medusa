@@ -518,7 +518,7 @@ export interface IPaymentModuleService extends IModuleService {
    * @param {string} id - The payment session's ID.
    * @param {AuthorizePaymentSessionDTO} data - The attributes to authorize in a payment session.
    * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
-   * @returns {Promise<PaymentDTO>} The created payment.
+   * @returns {Promise<PaymentDTO | void>} The created payment or void when authorization is blocked.
    *
    * @example
    * await paymentModuleService.authorizePaymentSession("payses_123", { provider_token: "" })
@@ -527,7 +527,7 @@ export interface IPaymentModuleService extends IModuleService {
     id: string,
     data?: AuthorizePaymentSessionDTO,
     sharedContext?: Context
-  ): Promise<PaymentDTO>
+  ): Promise<PaymentDTO | void>
 
   /**
    * This method cancels a payment session.
