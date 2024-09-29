@@ -2,6 +2,7 @@ import {
   Logger,
   ModuleProviderExports,
   ModuleServiceInitializeOptions,
+  PaymentModuleWebhookOptions,
 } from "@medusajs/types"
 
 export type InitializeModuleInjectableDependencies = {
@@ -9,6 +10,10 @@ export type InitializeModuleInjectableDependencies = {
 }
 
 export type PaymentModuleOptions = Partial<ModuleServiceInitializeOptions> & {
+  /**
+   * The webhook options that control how to handle received payment webhook events
+   */
+  webhook?: PaymentModuleWebhookOptions
   /**
    * Providers to be registered
    */

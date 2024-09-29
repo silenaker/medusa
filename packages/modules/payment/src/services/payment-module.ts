@@ -11,7 +11,6 @@ import {
   FilterablePaymentProviderProps,
   FilterablePaymentSessionProps,
   FindConfig,
-  InternalModuleDeclaration,
   IPaymentModuleService,
   ModuleJoinerConfig,
   ModulesSdkTypes,
@@ -50,6 +49,7 @@ import {
   RefundReason,
 } from "@models"
 import { joinerConfig } from "../joiner-config"
+import { PaymentModuleOptions } from "../types"
 import PaymentProviderService from "./payment-provider"
 
 type InjectedDependencies = {
@@ -101,7 +101,7 @@ export default class PaymentModuleService
       paymentProviderService,
       paymentCollectionService,
     }: InjectedDependencies,
-    protected readonly moduleDeclaration: InternalModuleDeclaration
+    protected readonly options: PaymentModuleOptions
   ) {
     // @ts-ignore
     super(...arguments)
@@ -560,22 +560,6 @@ export default class PaymentModuleService
 
   @InjectManager("baseRepository_")
   // @ts-expect-error
-  async retrievePaymentSession(
-    id: string,
-    config: FindConfig<PaymentSessionDTO> = {},
-    @MedusaContext() sharedContext?: Context
-  ): Promise<PaymentSessionDTO> {
-    const session = await this.paymentSessionService_.retrieve(
-      id,
-      config,
-      sharedContext
-    )
-
-    return this.baseRepository_.serialize(session)
-  }
-
-  @InjectManager("baseRepository_")
-  // @ts-expect-error
   async listPaymentSessions(
     filters?: FilterablePaymentSessionProps,
     config?: FindConfig<PaymentSessionDTO>,
@@ -831,6 +815,10 @@ export default class PaymentModuleService
       ),
       sharedContext
     )
+  }
+
+  get webhookOptions() {
+    return this.options.webhook
   }
 
   @InjectManager("baseRepository_")
