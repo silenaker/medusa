@@ -1,4 +1,4 @@
-import { PaymentCollectionDTO } from "@medusajs/framework/types"
+import { PaymentCollectionDTO, PaymentDTO } from "@medusajs/framework/types"
 import { MedusaError } from "@medusajs/framework/utils"
 import {
   WorkflowData,
@@ -7,11 +7,11 @@ import {
   createWorkflow,
 } from "@medusajs/framework/workflows-sdk"
 import { useRemoteQueryStep } from "../../common"
+import { capturePaymentWorkflow } from "../../payment"
 import {
   authorizePaymentSessionStep,
-  capturePaymentWorkflow,
-} from "../../payment"
-import { createPaymentSessionsWorkflow } from "../../payment-collection"
+  createPaymentSessionsWorkflow,
+} from "../../payment-collection"
 
 /**
  * This step validates that the payment collection is not_paid
@@ -62,17 +62,16 @@ export const markPaymentCollectionAsPaid = createWorkflow(
 
     const payment = authorizePaymentSessionStep({
       id: paymentSession.id,
-      context: { order_id: input.order_id },
     })
 
     capturePaymentWorkflow.runAsStep({
       input: {
-        payment_id: payment.id,
+        payment_id: payment!.id,
         captured_by: input.captured_by,
         amount: paymentCollection.amount,
       },
     })
 
-    return new WorkflowResponse(payment)
+    return new WorkflowResponse<PaymentDTO>(payment!)
   }
 )
