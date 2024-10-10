@@ -1,4 +1,3 @@
-import { PaymentModuleOptions } from "@medusajs/framework/types"
 import { Modules, PaymentWebhookEvents } from "@medusajs/framework/utils"
 
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -7,9 +6,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const { provider } = req.params
 
-    const options: PaymentModuleOptions =
-      // @ts-expect-error "Not sure if .options exists on a module"
-      req.scope.resolve(Modules.PAYMENT).options || {}
+    const options = req.scope.resolve(Modules.PAYMENT).webhookOptions || {}
 
     const event = {
       provider,
@@ -25,8 +22,8 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         data: event,
       },
       {
-        delay: options.webhook_delay || 5000,
-        attempts: options.webhook_retries || 3,
+        delay: options.delay ?? 5000,
+        attempts: options.retries ?? 3,
       }
     )
   } catch (err) {
