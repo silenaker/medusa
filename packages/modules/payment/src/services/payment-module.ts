@@ -11,7 +11,6 @@ import {
   FilterablePaymentProviderProps,
   FilterablePaymentSessionProps,
   FindConfig,
-  InternalModuleDeclaration,
   IPaymentModuleService,
   ModuleJoinerConfig,
   ModulesSdkTypes,
@@ -51,6 +50,7 @@ import {
   RefundReason,
 } from "@models"
 import { joinerConfig } from "../joiner-config"
+import { PaymentModuleOptions } from "../types"
 import PaymentProviderService from "./payment-provider"
 
 type InjectedDependencies = {
@@ -102,7 +102,7 @@ export default class PaymentModuleService
       paymentProviderService,
       paymentCollectionService,
     }: InjectedDependencies,
-    protected readonly moduleDeclaration: InternalModuleDeclaration
+    protected readonly options: PaymentModuleOptions
   ) {
     // @ts-ignore
     super(...arguments)
@@ -843,6 +843,10 @@ export default class PaymentModuleService
       ),
       sharedContext
     )
+  }
+
+  get webhookOptions() {
+    return this.options.webhook
   }
 
   @InjectManager()
