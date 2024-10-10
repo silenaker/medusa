@@ -524,6 +524,21 @@ export interface IPaymentModuleService extends IModuleService {
   ): Promise<PaymentDTO>
 
   /**
+   * This method cancels a payment session.
+   *
+   * @param {string} id - The ID of the payment session.
+   * @param {Context} sharedContext - A context used to share resources, such as transaction manager, between the application and the module.
+   * @returns {Promise<PaymentSessionDTO>} The payment session's details.
+   *
+   * @example
+   * const paymentSession = await paymentModuleService.cancelPaymentSession("payses_123")
+   */
+  cancelPaymentSession(
+    id: string,
+    sharedContext?: Context
+  ): Promise<PaymentSessionDTO>
+
+  /**
    * This method retrieves a paginated list of payment sessions based on optional filters and configuration.
    *
    * @param {FilterablePaymentSessionProps} filters - The filters to apply on the retrieved payment sessions.
