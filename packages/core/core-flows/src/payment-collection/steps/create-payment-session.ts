@@ -9,10 +9,10 @@ import { StepResponse, createStep } from "@medusajs/framework/workflows-sdk"
 export interface CreatePaymentSessionStepInput {
   payment_collection_id: string
   provider_id: string
-  amount: BigNumberInput
-  currency_code: string
+  provider_token?: string
+  amount?: BigNumberInput
   context?: PaymentProviderContext
-  data?: Record<string, unknown>
+  metadata?: Record<string, unknown>
 }
 
 export const createPaymentSessionStepId = "create-payment-session"
@@ -28,10 +28,10 @@ export const createPaymentSessionStep = createStep(
       input.payment_collection_id,
       {
         provider_id: input.provider_id,
-        currency_code: input.currency_code,
+        provider_token: input.provider_token,
         amount: input.amount,
-        data: input.data ?? {},
         context: input.context,
+        metadata: input.metadata,
       }
     )
 

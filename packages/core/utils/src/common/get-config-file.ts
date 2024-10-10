@@ -1,4 +1,5 @@
 import { join } from "path"
+import fs from "fs"
 
 /**
  * Attempts to resolve the config file in a given root directory.
@@ -10,13 +11,29 @@ export function getConfigFile<TConfig = unknown>(
   rootDir: string,
   configName: string
 ): { configModule: TConfig; configFilePath: string; error?: any } {
-  const configPath = join(rootDir, configName)
-  let configFilePath = ``
+  const extNames = [".js", ".cjs"]
+  const configPaths = extNames.map((ext) => join(rootDir, configName + ext))
+
+  let configFilePath
   let configModule
   let err
 
+  for (let i = 0; i < configPaths.length; i++) {
+    if (fs.existsSync(configPaths[i])) {
+      configFilePath = configPaths[i]
+      break
+    }
+  }
+
+  if (!configFilePath) {
+    return {
+      configModule,
+      configFilePath,
+      error: new Error(`Cannot found file ${configName}`),
+    }
+  }
+
   try {
-    configFilePath = require.resolve(configPath)
     configModule = require(configFilePath)
   } catch (e) {
     err = e
