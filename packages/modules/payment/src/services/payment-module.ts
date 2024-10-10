@@ -417,8 +417,8 @@ export default class PaymentModuleService
     id: string,
     data?: AuthorizePaymentSessionDTO,
     @MedusaContext() sharedContext?: Context
-  ): Promise<PaymentDTO> {
-    const paymentSession = await this.paymentSessionService_.retrieve(
+  ): Promise<PaymentDTO | void> {
+    let paymentSession = await this.paymentSessionService_.retrieve(
       id,
       { select: ["data", "context", "provider_id"] },
       sharedContext
@@ -440,13 +440,15 @@ export default class PaymentModuleService
       sharedContext
     )
 
-    const payment = await this.paymentService_.retrieve(
-      { payment_session_id: paymentSession.id },
-      {},
-      sharedContext
-    )
-
-    return this.baseRepository_.serialize(payment, { populate: true })
+    paymentSession = await this.paymentSessionService_.retrieve(id, {
+      relations: ["payment"],
+    })
+    if (paymentSession.payment) {
+      return this.baseRepository_.serialize<PaymentDTO>(
+        paymentSession.payment,
+        { populate: true }
+      )
+    }
   }
 
   @InjectManager()

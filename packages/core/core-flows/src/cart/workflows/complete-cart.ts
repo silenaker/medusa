@@ -21,7 +21,7 @@ import {
   useRemoteQueryStep,
 } from "../../common"
 import { createOrdersStep } from "../../order/steps/create-orders"
-import { authorizePaymentSessionStep } from "../../payment/steps/authorize-payment-session"
+import { authorizePaymentSessionStep } from "../../payment-collection"
 import { registerUsageStep } from "../../promotion/steps/register-usage"
 import { updateCartsStep, validateCartPaymentsStep } from "../steps"
 import { reserveInventoryStep } from "../steps/reserve-inventory"
@@ -36,6 +36,7 @@ import {
 
 export type CompleteCartWorkflowInput = {
   id: string
+  provider_token?: string
 }
 
 export const completeCartWorkflowId = "complete-cart"
@@ -62,7 +63,7 @@ export const completeCartWorkflow = createWorkflow(
       // We choose the first payment session, as there will only be one active payment session
       // This might change in the future.
       id: paymentSessions[0].id,
-      context: { cart_id: cart.id },
+      provider_token: input.provider_token,
     })
 
     const { variants, sales_channel_id } = transform({ cart }, (data) => {
