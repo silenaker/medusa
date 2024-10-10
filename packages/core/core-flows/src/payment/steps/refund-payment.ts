@@ -9,6 +9,7 @@ export type RefundPaymentStepInput = {
   payment_id: string
   created_by?: string
   amount?: BigNumberInput
+  note?: string
 }
 
 export const refundPaymentStepId = "refund-payment-step"
@@ -22,7 +23,11 @@ export const refundPaymentStep = createStep(
       Modules.PAYMENT
     )
 
-    const payment = await paymentModule.refundPayment(input)
+    const payment = await paymentModule.refundPayment(input.payment_id, {
+      amount: input.amount,
+      created_by: input.created_by,
+      note: input.note,
+    })
 
     return new StepResponse(payment)
   }

@@ -1,3 +1,5 @@
+import Stripe from "stripe"
+
 export interface StripeOptions {
   /**
    * The API key for the Stripe account
@@ -12,13 +14,19 @@ export interface StripeOptions {
    */
   capture?: boolean
   /**
-   * set `automatic_payment_methods` on the intent request to `{ enabled: true }`
+   * set `automatic_payment_methods` on the intent request
    */
-  automaticPaymentMethods?: boolean
+  automaticPaymentMethods?:
+    | boolean
+    | Stripe.PaymentIntentCreateParams.AutomaticPaymentMethods
   /**
    * Set a default description on the intent if the context does not provide one
    */
   paymentDescription?: string
+  /**
+   * Create a stripe customer if not found
+   */
+  createCustomer?: boolean
 }
 
 export interface PaymentIntentOptions {

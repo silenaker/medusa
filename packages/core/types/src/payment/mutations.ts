@@ -187,11 +187,6 @@ export interface CreateCaptureDTO {
   amount?: BigNumberInput
 
   /**
-   * The associated payment's ID.
-   */
-  payment_id: string
-
-  /**
    * Who captured the payment. For example,
    * a user's ID.
    */
@@ -206,11 +201,6 @@ export interface CreateRefundDTO {
    * The amount of the refund.
    */
   amount?: BigNumberInput
-
-  /**
-   * The associated payment's ID.
-   */
-  payment_id: string
 
   /**
    * The associated refund reason's ID.
@@ -239,6 +229,11 @@ export interface CreatePaymentSessionDTO {
   provider_id: string
 
   /**
+   * The provider's payment method token
+   */
+  provider_token?: string
+
+  /**
    * The ISO 3 character currency code of the payment session.
    */
   currency_code: string
@@ -249,14 +244,14 @@ export interface CreatePaymentSessionDTO {
   amount: BigNumberInput
 
   /**
-   * Necessary data for the associated payment provider to process the payment.
-   */
-  data: Record<string, unknown>
-
-  /**
    * Necessary context data for the associated payment provider.
    */
   context?: PaymentProviderContext
+
+  /**
+   * metadata for the payment session.
+   */
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -269,19 +264,34 @@ export interface UpdatePaymentSessionDTO {
   id: string
 
   /**
-   * Necessary data for the associated payment provider to process the payment.
+   * The provider's payment method token
    */
-  data: Record<string, unknown>
-
-  /**
-   * The ISO 3 character currency code.
-   */
-  currency_code: string
+  provider_token?: string
 
   /**
    * The amount to be authorized.
    */
-  amount: BigNumberInput
+  amount?: BigNumberInput
+
+  /**
+   * Necessary context data for the associated payment provider.
+   */
+  context?: PaymentProviderContext
+
+  /**
+   * metadata for the payment session.
+   */
+  metadata?: Record<string, unknown> | null
+}
+
+/**
+ * The attributes to authorize in a payment session.
+ */
+export interface AuthorizePaymentSessionDTO {
+  /**
+   * The provider token to authorize payment session
+   */
+  provider_token?: string
 
   /**
    * Necessary context data for the associated payment provider.

@@ -14,6 +14,7 @@ export const StoreCreatePaymentSession = z
     provider_id: z.string(),
     context: z.record(z.unknown()).optional(),
     data: z.record(z.unknown()).optional(),
+    amount: z.number().optional(),
   })
   .strict()
 

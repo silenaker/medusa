@@ -5,23 +5,31 @@
  */
 export enum PaymentCollectionStatus {
   /**
-   * The payment collection isn't paid.
+   * The payment collection is pending.
    */
-  NOT_PAID = "not_paid",
+  PENDING = "pending",
   /**
-   * The payment collection is awaiting payment.
+   * The payment collection is paid.
    */
-  AWAITING = "awaiting",
+  PAID = "paid",
+  /**
+   * The payment collection is partially paid.
+   */
+  PARTIALLY_PAID = "partially_paid",
   /**
    * The payment collection is authorized.
    */
   AUTHORIZED = "authorized",
   /**
-   * Some of the payments in the payment collection are authorized.
+   * The payment collection is partially authorized.
    */
   PARTIALLY_AUTHORIZED = "partially_authorized",
   /**
-   * The payment collection is canceled.
+   * The payment collection is refunded.
    */
-  CANCELED = "canceled",
+  REFUNDED = "refunded",
+  /**
+   * The payment collection is refunded.
+   */
+  PARTIALLY_REFUNDED = "partially_refunded",
 }

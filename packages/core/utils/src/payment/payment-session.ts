@@ -13,6 +13,18 @@ export enum PaymentSessionStatus {
    */
   CAPTURED = "captured",
   /**
+   * The payment is partially captured.
+   */
+  PARTIALLY_CAPTURED = "partially_captured",
+  /**
+   * The payment is refunded.
+   */
+  REFUNDED = "refunded",
+  /**
+   * The payment is refunded.
+   */
+  PARTIALLY_REFUNDED = "partially_refunded",
+  /**
    * The payment is pending.
    */
   PENDING = "pending",
@@ -21,11 +33,11 @@ export enum PaymentSessionStatus {
    */
   REQUIRES_MORE = "requires_more",
   /**
-   * An error occurred while processing the payment.
-   */
-  ERROR = "error",
-  /**
    * The payment is canceled.
    */
   CANCELED = "canceled",
+  /**
+   * The payment is being processing.
+   */
+  PROCESSING = "processing",
 }

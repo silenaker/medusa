@@ -22,7 +22,10 @@ export const capturePaymentStep = createStep(
       Modules.PAYMENT
     )
 
-    const payment = await paymentModule.capturePayment(input)
+    const payment = await paymentModule.capturePayment(input.payment_id, {
+      amount: input.amount,
+      captured_by: input.captured_by,
+    })
 
     return new StepResponse(payment)
   }

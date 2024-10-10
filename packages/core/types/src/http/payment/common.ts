@@ -4,11 +4,13 @@ import { BaseFilterable, OperatorMap } from "../../dal"
  * The payment collection's status.
  */
 export type BasePaymentCollectionStatus =
-  | "not_paid"
-  | "awaiting"
+  | "pending"
+  | "paid"
+  | "partially_paid"
   | "authorized"
   | "partially_authorized"
-  | "canceled"
+  | "refunded"
+  | "partially_refunded"
 
 /**
  *
@@ -17,10 +19,13 @@ export type BasePaymentCollectionStatus =
 export type BasePaymentSessionStatus =
   | "authorized"
   | "captured"
+  | "partially_captured"
+  | "refunded"
+  | "partially_refunded"
   | "pending"
   | "requires_more"
-  | "error"
   | "canceled"
+  | "processing"
 
 export interface BasePaymentProvider {
   id: string

@@ -3,29 +3,22 @@ import { EOL } from "os"
 import Stripe from "stripe"
 
 import {
+  AuthorizePaymentProviderSession,
+  BigNumberInput,
   CreatePaymentProviderSession,
   MedusaContainer,
   PaymentProviderError,
   PaymentProviderSessionResponse,
+  PaymentSessionStatus,
   ProviderWebhookPayload,
   UpdatePaymentProviderSession,
-  WebhookActionResult,
 } from "@medusajs/framework/types"
 import {
   AbstractPaymentProvider,
   isDefined,
   isPaymentProviderError,
-  isPresent,
-  MedusaError,
-  PaymentActions,
-  PaymentSessionStatus,
 } from "@medusajs/framework/utils"
-import {
-  ErrorCodes,
-  ErrorIntentStatus,
-  PaymentIntentOptions,
-  StripeOptions,
-} from "../types"
+import { ErrorCodes, PaymentIntentOptions, StripeOptions } from "../types"
 import {
   getAmountFromSmallestUnit,
   getSmallestUnit,
@@ -77,56 +70,63 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     return options
   }
 
-  async getPaymentStatus(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentSessionStatus> {
-    const id = paymentSessionData.id as string
-    const paymentIntent = await this.stripe_.paymentIntents.retrieve(id)
-
-    switch (paymentIntent.status) {
-      case "requires_payment_method":
-      case "requires_confirmation":
-      case "processing":
-        return PaymentSessionStatus.PENDING
-      case "requires_action":
-        return PaymentSessionStatus.REQUIRES_MORE
-      case "canceled":
-        return PaymentSessionStatus.CANCELED
-      case "requires_capture":
-        return PaymentSessionStatus.AUTHORIZED
-      case "succeeded":
-        return PaymentSessionStatus.CAPTURED
-      default:
-        return PaymentSessionStatus.PENDING
-    }
-  }
-
   async initiatePayment(
-    input: CreatePaymentProviderSession
+    data: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
     const intentRequestData = this.getPaymentIntentOptions()
-    const { email, extra, session_id, customer } = input.context
-    const { currency_code, amount } = input
+    const {
+      billing_address,
+      shipping_address,
+      email,
+      customer,
+      payment_description,
+      ...metadata
+    } = data.context
+    const { currency_code, amount, token } = data
 
-    const description = (extra?.payment_description ??
+    const description = (payment_description ??
       this.options_?.paymentDescription) as string
 
     const intentRequest: Stripe.PaymentIntentCreateParams = {
       description,
       amount: getSmallestUnit(amount, currency_code),
       currency: currency_code,
-      metadata: { session_id: session_id! },
+      payment_method: token,
+      confirm: !!token,
+      shipping:
+        shipping_address || customer
+          ? {
+              address: {
+                city: shipping_address?.city ?? undefined,
+                country: shipping_address?.country_code ?? undefined,
+                line1: shipping_address?.address_1 ?? undefined,
+                line2: shipping_address?.address_2 ?? undefined,
+                postal_code: shipping_address?.postal_code ?? undefined,
+                state: shipping_address?.province ?? undefined,
+              },
+              name: `${customer?.first_name ?? ""} ${
+                customer?.last_name ?? ""
+              }`.trim(),
+              phone: shipping_address?.phone ?? undefined,
+            }
+          : undefined,
+      metadata: metadata as Stripe.MetadataParam,
       capture_method: this.options_.capture ? "automatic" : "manual",
+      expand: ["latest_charge"],
       ...intentRequestData,
     }
 
-    if (this.options_?.automaticPaymentMethods) {
-      intentRequest.automatic_payment_methods = { enabled: true }
+    const automaticPaymentMethods = this.options_?.automaticPaymentMethods
+    if (automaticPaymentMethods) {
+      intentRequest.automatic_payment_methods =
+        typeof automaticPaymentMethods === "boolean"
+          ? { enabled: true }
+          : automaticPaymentMethods
     }
 
     if (customer?.metadata?.stripe_id) {
       intentRequest.customer = customer.metadata.stripe_id as string
-    } else {
+    } else if (this.options_.createCustomer) {
       let stripeCustomer
       try {
         stripeCustomer = await this.stripe_.customers.create({
@@ -142,56 +142,64 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       intentRequest.customer = stripeCustomer.id
     }
 
-    let sessionData
     try {
-      sessionData = (await this.stripe_.paymentIntents.create(
-        intentRequest
-      )) as unknown as Record<string, unknown>
+      const intent = await this.stripe_.paymentIntents.create(intentRequest)
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (e) {
       return this.buildError(
-        "An error occurred in InitiatePayment during the creation of the stripe payment intent",
+        "An error occurred in initiatePayment during the creation of the stripe payment intent",
         e
       )
-    }
-
-    return {
-      data: sessionData,
-      // TODO: REVISIT
-      // update_requests: customer?.metadata?.stripe_id
-      //   ? undefined
-      //   : {
-      //       customer_metadata: {
-      //         stripe_id: intentRequest.customer,
-      //       },
-      //     },
     }
   }
 
   async authorizePayment(
-    paymentSessionData: Record<string, unknown>,
-    context: Record<string, unknown>
-  ): Promise<
-    | PaymentProviderError
-    | {
-        status: PaymentSessionStatus
-        data: PaymentProviderSessionResponse["data"]
+    data: AuthorizePaymentProviderSession
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    const { id } = data.data as unknown as Stripe.PaymentIntent
+    try {
+      const intent = await this.stripe_.paymentIntents.confirm(id, {
+        payment_method: data.token,
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
       }
-  > {
-    const status = await this.getPaymentStatus(paymentSessionData)
-    return { data: paymentSessionData, status }
+    } catch (e) {
+      return this.buildError(
+        "An error occurred in authorizePayment during the confirm of the stripe payment intent",
+        e
+      )
+    }
   }
 
   async cancelPayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
     try {
-      const id = paymentSessionData.id as string
-      return (await this.stripe_.paymentIntents.cancel(
-        id
-      )) as unknown as PaymentProviderSessionResponse["data"]
+      const intent = await this.stripe_.paymentIntents.cancel(id, {
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (error) {
-      if (error.payment_intent?.status === ErrorIntentStatus.CANCELED) {
-        return error.payment_intent
+      const intent = error.payment_intent as Stripe.PaymentIntent | undefined
+      if (intent?.status === "canceled") {
+        return {
+          ...(await this.buildResponse(intent)),
+          data: intent as unknown as Record<string, unknown>,
+          context: intent.metadata,
+        }
       }
 
       return this.buildError("An error occurred in cancelPayment", error)
@@ -199,16 +207,33 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
   }
 
   async capturePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    const id = paymentSessionData.id as string
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    captureAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    const { id, currency } =
+      paymentSessionData as unknown as Stripe.PaymentIntent
     try {
-      const intent = await this.stripe_.paymentIntents.capture(id)
-      return intent as unknown as PaymentProviderSessionResponse["data"]
+      const intent = await this.stripe_.paymentIntents.capture(id, {
+        amount_to_capture: captureAmount
+          ? getSmallestUnit(captureAmount, currency)
+          : undefined,
+        final_capture: false,
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (error) {
       if (error.code === ErrorCodes.PAYMENT_INTENT_UNEXPECTED_STATE) {
-        if (error.payment_intent?.status === ErrorIntentStatus.SUCCEEDED) {
-          return error.payment_intent
+        const intent = error.payment_intent as Stripe.PaymentIntent | undefined
+        if (intent?.status === "succeeded") {
+          return {
+            ...(await this.buildResponse(intent)),
+            data: intent as unknown as Record<string, unknown>,
+            context: intent.metadata,
+          }
         }
       }
 
@@ -217,138 +242,156 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
   }
 
   async deletePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    return await this.cancelPayment(paymentSessionData)
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | void> {
+    const res = await this.cancelPayment(paymentSessionData)
+    if (isPaymentProviderError(res)) return res
   }
 
   async refundPayment(
-    paymentSessionData: Record<string, unknown>,
-    refundAmount: number
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
-    const id = paymentSessionData.id as string
-
+    paymentSessionData: PaymentProviderSessionResponse["data"],
+    refundAmount?: BigNumberInput
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    const { id, currency } =
+      paymentSessionData as unknown as Stripe.PaymentIntent
     try {
-      const { currency } = paymentSessionData
       await this.stripe_.refunds.create({
-        amount: getSmallestUnit(refundAmount, currency as string),
-        payment_intent: id as string,
+        payment_intent: id,
+        amount: refundAmount
+          ? getSmallestUnit(refundAmount, currency)
+          : undefined,
       })
+      const intent = await this.stripe_.paymentIntents.retrieve(id, {
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (e) {
       return this.buildError("An error occurred in refundPayment", e)
     }
-
-    return paymentSessionData
   }
 
   async retrievePayment(
-    paymentSessionData: Record<string, unknown>
-  ): Promise<PaymentProviderError | PaymentProviderSessionResponse["data"]> {
+    paymentSessionData: PaymentProviderSessionResponse["data"]
+  ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
+    const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
     try {
-      const id = paymentSessionData.id as string
-      const intent = await this.stripe_.paymentIntents.retrieve(id)
-
-      intent.amount = getAmountFromSmallestUnit(intent.amount, intent.currency)
-
-      return intent as unknown as PaymentProviderSessionResponse["data"]
+      const intent = await this.stripe_.paymentIntents.retrieve(id, {
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (e) {
       return this.buildError("An error occurred in retrievePayment", e)
     }
   }
 
   async updatePayment(
-    input: UpdatePaymentProviderSession
+    data: UpdatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    const { context, data, currency_code, amount } = input
-
-    const amountNumeric = getSmallestUnit(amount, currency_code)
-
-    const stripeId = context.customer?.metadata?.stripe_id
-
-    if (stripeId !== data.customer) {
-      const result = await this.initiatePayment(input)
-      if (isPaymentProviderError(result)) {
-        return this.buildError(
-          "An error occurred in updatePayment during the initiate of the new payment for the new customer",
-          result
-        )
-      }
-
-      return result
-    } else {
-      if (isPresent(amount) && data.amount === amountNumeric) {
-        return { data }
-      }
-
-      try {
-        const id = data.id as string
-        const sessionData = (await this.stripe_.paymentIntents.update(id, {
-          amount: amountNumeric,
-        })) as unknown as PaymentProviderSessionResponse["data"]
-
-        return { data: sessionData }
-      } catch (e) {
-        return this.buildError("An error occurred in updatePayment", e)
-      }
-    }
-  }
-
-  async updatePaymentData(sessionId: string, data: Record<string, unknown>) {
+    const { id, currency, shipping } =
+      data.data as unknown as Stripe.PaymentIntent
+    const { context, amount, token } = data
     try {
-      // Prevent from updating the amount from here as it should go through
-      // the updatePayment method to perform the correct logic
-      if (isPresent(data.amount)) {
-        throw new MedusaError(
-          MedusaError.Types.INVALID_DATA,
-          "Cannot update amount, use updatePayment instead"
-        )
+      const updateParams: Stripe.PaymentIntentUpdateParams = {}
+      if (context) {
+        const {
+          billing_address,
+          shipping_address,
+          email,
+          customer,
+          payment_description,
+          ...metadata
+        } = context
+        if (payment_description) {
+          updateParams.description = payment_description
+        }
+        if (shipping_address || customer) {
+          let address: Stripe.AddressParam = {
+            city: shipping?.address?.city ?? undefined,
+            country: shipping?.address?.country ?? undefined,
+            line1: shipping?.address?.line1 ?? undefined,
+            line2: shipping?.address?.line2 ?? undefined,
+            postal_code: shipping?.address?.postal_code ?? undefined,
+            state: shipping?.address?.state ?? undefined,
+          }
+          if (shipping_address) {
+            address = {
+              city: shipping_address.city ?? undefined,
+              country: shipping_address.country_code ?? undefined,
+              line1: shipping_address.address_1 ?? undefined,
+              line2: shipping_address.address_2 ?? undefined,
+              postal_code: shipping_address.postal_code ?? undefined,
+              state: shipping_address.province ?? undefined,
+            }
+          }
+          updateParams.shipping = {
+            address,
+            name: customer
+              ? `${customer.first_name ?? ""} ${
+                  customer.last_name ?? ""
+                }`.trim()
+              : shipping?.name ?? "",
+            phone: shipping_address?.phone ?? shipping?.phone ?? undefined,
+          }
+        }
+        updateParams.metadata = metadata as Stripe.MetadataParam
       }
-
-      return (await this.stripe_.paymentIntents.update(sessionId, {
-        ...data,
-      })) as unknown as PaymentProviderSessionResponse["data"]
+      if (amount) {
+        updateParams.amount = getSmallestUnit(amount, currency)
+      }
+      if (token) {
+        updateParams.payment_method = token
+      }
+      const intent = await this.stripe_.paymentIntents.update(id, {
+        ...updateParams,
+        expand: ["latest_charge"],
+      })
+      return {
+        ...(await this.buildResponse(intent)),
+        data: intent as unknown as Record<string, unknown>,
+        context: intent.metadata,
+      }
     } catch (e) {
-      return this.buildError("An error occurred in updatePaymentData", e)
+      return this.buildError("An error occurred in updatePayment", e)
     }
   }
 
   async getWebhookActionAndData(
-    webhookData: ProviderWebhookPayload["payload"]
-  ): Promise<WebhookActionResult> {
-    const event = this.constructWebhookEvent(webhookData)
-    const intent = event.data.object as Stripe.PaymentIntent
+    data: ProviderWebhookPayload["payload"]
+  ): Promise<PaymentProviderSessionResponse> {
+    const event = this.constructWebhookEvent(data)
+    let intent: Stripe.PaymentIntent
 
-    const { currency } = intent
-    switch (event.type) {
-      case "payment_intent.amount_capturable_updated":
-        return {
-          action: PaymentActions.AUTHORIZED,
-          data: {
-            session_id: intent.metadata.session_id,
-            amount: getAmountFromSmallestUnit(
-              intent.amount_capturable,
-              currency
-            ), // NOTE: revisit when implementing multicapture
-          },
-        }
-      case "payment_intent.succeeded":
-        return {
-          action: PaymentActions.SUCCESSFUL,
-          data: {
-            session_id: intent.metadata.session_id,
-            amount: getAmountFromSmallestUnit(intent.amount_received, currency),
-          },
-        }
-      case "payment_intent.payment_failed":
-        return {
-          action: PaymentActions.FAILED,
-          data: {
-            session_id: intent.metadata.session_id,
-            amount: getAmountFromSmallestUnit(intent.amount, currency),
-          },
-        }
-      default:
-        return { action: PaymentActions.NOT_SUPPORTED }
+    if (event.data.object.object === "payment_intent") {
+      intent = event.data.object
+    } else if (event.data.object.object === "charge") {
+      if (!event.data.object.payment_intent) {
+        throw new Error(
+          `Charge doesn't have a associated payment intent: ${event.type} ${event.data.object.id}.`
+        )
+      }
+      intent = await this.stripe_.paymentIntents.retrieve(
+        event.data.object.payment_intent as string,
+        { expand: ["latest_charge"] }
+      )
+    } else if (event.data.object.object === "invoice") {
+      // TODO
+      throw new Error(`Unexpected event type: ${event.type}.`)
+    } else {
+      throw new Error(`Unexpected event type: ${event.type}.`)
+    }
+
+    return {
+      ...(await this.buildResponse(intent)),
+      data: intent as unknown as Record<string, unknown>,
+      context: intent.metadata,
     }
   }
 
@@ -367,6 +410,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       this.options_.webhookSecret
     )
   }
+
   protected buildError(
     message: string,
     error: Stripe.StripeRawError | PaymentProviderError | Error
@@ -379,6 +423,83 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
         : "detail" in error
         ? error.detail
         : error.message ?? "",
+    }
+  }
+
+  protected async buildResponse(
+    intent: Stripe.PaymentIntent
+  ): Promise<
+    Pick<
+      PaymentProviderSessionResponse,
+      "status" | "captured_amount" | "refunded_amount"
+    >
+  > {
+    let status: PaymentSessionStatus
+
+    switch (intent.status) {
+      case "requires_action": {
+        status = "requires_more"
+        break
+      }
+      case "processing": {
+        status = "processing"
+        break
+      }
+      case "requires_capture": {
+        status = "authorized"
+        break
+      }
+      case "succeeded": {
+        status = "captured"
+        break
+      }
+      case "canceled": {
+        status = "canceled"
+        break
+      }
+      default:
+        status = "pending"
+    }
+
+    let captured_amount = 0
+    let refunded_amount = 0
+
+    if (status === "authorized" || status === "captured") {
+      let charge: Stripe.Charge
+      if (typeof intent.latest_charge === "string") {
+        charge = await this.stripe_.charges.retrieve(intent.latest_charge)
+      } else {
+        charge = intent.latest_charge as Stripe.Charge
+      }
+      const authorizedAmount = getAmountFromSmallestUnit(
+        charge.amount,
+        charge.currency
+      )
+      captured_amount = getAmountFromSmallestUnit(
+        charge.amount_captured,
+        charge.currency
+      )
+      refunded_amount = getAmountFromSmallestUnit(
+        charge.amount_refunded,
+        charge.currency
+      )
+      if (captured_amount > 0) {
+        if (refunded_amount > 0) {
+          if (captured_amount === refunded_amount) {
+            status = "refunded"
+          } else {
+            status = "partially_refunded"
+          }
+        } else if (captured_amount < authorizedAmount) {
+          status = "partially_captured"
+        }
+      }
+    }
+
+    return {
+      status,
+      captured_amount,
+      refunded_amount,
     }
   }
 }
