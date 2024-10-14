@@ -1077,11 +1077,6 @@ export default class PaymentModuleService
           authorized_amount: authorizedAmount,
           captured_amount: capturedAmount,
           refunded_amount: refundedAmount,
-          completed_at:
-            paymentCollection.completed_at ??
-            (MathBN.gte(netCapturedAmount, paymentCollection.raw_amount)
-              ? new Date()
-              : null),
         },
         sharedContext
       )
