@@ -1,5 +1,11 @@
 # @medusajs/types
 
+## 2.0.2
+
+### Patch Changes
+
+- [#9935](https://github.com/medusajs/medusa/pull/9935) [`bbf4af17258ea34adeeb8ff3a6cd213a12d67c76`](https://github.com/medusajs/medusa/commit/bbf4af17258ea34adeeb8ff3a6cd213a12d67c76) Thanks [@adrien2p](https://github.com/adrien2p)! - fix(types): Prev limit wrong values
+
 ## 2.0.1
 
 ## 2.0.0
