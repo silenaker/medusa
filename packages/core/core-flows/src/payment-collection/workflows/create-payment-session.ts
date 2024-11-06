@@ -12,7 +12,7 @@ import { createPaymentSessionStep } from "../steps"
 
 export interface CreatePaymentSessionsWorkflowInput {
   payment_collection_id: string
-  provider_id: string
+  provider_id?: string
   provider_token?: string
   amount?: BigNumberInput
   context?: PaymentProviderContext

@@ -38,8 +38,8 @@ export default class PaymentSession {
   })
   raw_amount: BigNumberRawValue
 
-  @Property({ columnType: "text" })
-  provider_id: string
+  @Property({ columnType: "text", nullable: true })
+  provider_id: string | null = null
 
   @Property({ columnType: "jsonb" })
   data: Record<string, unknown> = {}

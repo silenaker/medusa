@@ -345,24 +345,32 @@ export default class PaymentModuleService
       sharedContext
     )
 
-    try {
-      res = await this.paymentProviderService_.createSession(data.provider_id, {
-        amount,
-        currency_code: paymentCollection.currency_code,
-        context: { ...data.context, session_id: paymentSession.id },
-        token: data.provider_token,
-      })
-    } catch (err) {
-      await this.paymentSessionService_.delete(paymentSession.id, sharedContext)
-      throw err
-    }
+    if (data.provider_id) {
+      try {
+        res = await this.paymentProviderService_.createSession(
+          data.provider_id,
+          {
+            amount,
+            currency_code: paymentCollection.currency_code,
+            context: { ...data.context, session_id: paymentSession.id },
+            token: data.provider_token,
+          }
+        )
+      } catch (err) {
+        await this.paymentSessionService_.delete(
+          paymentSession.id,
+          sharedContext
+        )
+        throw err
+      }
 
-    await this.handleProviderSessionResponse_(res, sharedContext)
-    paymentSession = await this.paymentSessionService_.retrieve(
-      paymentSession.id,
-      {},
-      sharedContext
-    )
+      await this.handleProviderSessionResponse_(res, sharedContext)
+      paymentSession = await this.paymentSessionService_.retrieve(
+        paymentSession.id,
+        {},
+        sharedContext
+      )
+    }
 
     return this.baseRepository_.serialize(paymentSession, { populate: true })
   }
@@ -372,35 +380,79 @@ export default class PaymentModuleService
     data: UpdatePaymentSessionDTO,
     @MedusaContext() sharedContext?: Context
   ): Promise<PaymentSessionDTO> {
+    const session = await this.paymentSessionService_.retrieve(data.id, {
+      select: [
+        "id",
+        "data",
+        "context",
+        "provider_id",
+        "metadata",
+        "currency_code",
+        "raw_amount",
+      ],
+    })
+    let res: PaymentProviderSessionResponse | undefined
+
     if (
-      !data.amount &&
-      !data.context &&
-      !data.provider_token &&
-      !data.metadata
+      data.provider_id &&
+      session.provider_id &&
+      data.provider_id !== session.provider_id
     ) {
-      throw new MedusaError(
-        MedusaError.Types.INVALID_DATA,
-        `The payment session update requires at least an amount, context, provider token or metadata.`
+      res = await this.paymentProviderService_.cancelPayment(
+        session.provider_id,
+        session.data
       )
     }
 
-    const session = await this.paymentSessionService_.retrieve(data.id, {
-      select: ["id", "data", "context", "provider_id", "metadata"],
-    })
+    if (
+      data.provider_id &&
+      (!session.provider_id || data.provider_id !== session.provider_id)
+    ) {
+      try {
+        res = await this.paymentProviderService_.createSession(
+          data.provider_id,
+          {
+            amount: data.amount ?? session.raw_amount,
+            currency_code: session.currency_code,
+            context: {
+              ...session.context,
+              ...data.context,
+              session_id: session.id,
+            },
+            token: data.provider_token,
+          }
+        )
+      } catch (err) {
+        if (res) {
+          await this.handleProviderSessionResponse_(res, sharedContext)
+        }
+        throw err
+      }
+    } else if (session.provider_id) {
+      res = await this.paymentProviderService_.updateSession(
+        session.provider_id,
+        {
+          data: session.data,
+          context: {
+            ...session.context,
+            ...data.context,
+            session_id: session.id,
+          },
+          amount: data.amount,
+          token: data.provider_token,
+        }
+      )
+    }
 
-    await this.handleProviderSessionResponse_(
-      await this.paymentProviderService_.updateSession(session.provider_id, {
-        data: session.data,
-        context: {
-          ...session.context,
-          ...data.context,
-          session_id: session.id,
-        },
-        amount: data.amount,
-        token: data.provider_token,
-      }),
-      sharedContext
-    )
+    if (res) {
+      if (data.provider_id && data.provider_id !== session.provider_id) {
+        await this.paymentSessionService_.update(
+          { id: session.id, provider_id: data.provider_id },
+          sharedContext
+        )
+      }
+      await this.handleProviderSessionResponse_(res, sharedContext)
+    }
 
     if (data.amount || data.context || data.metadata) {
       const toUpdate: any = {}
@@ -430,10 +482,12 @@ export default class PaymentModuleService
       sharedContext
     )
 
-    await this.paymentProviderService_.deleteSession(
-      session.provider_id,
-      session.data
-    )
+    if (session.provider_id) {
+      await this.paymentProviderService_.deleteSession(
+        session.provider_id,
+        session.data
+      )
+    }
 
     await this.paymentSessionService_.delete(id, sharedContext)
   }
@@ -449,6 +503,13 @@ export default class PaymentModuleService
       { select: ["data", "context", "provider_id"] },
       sharedContext
     )
+
+    if (!paymentSession.provider_id) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `The payment session has not yet specified a provider.`
+      )
+    }
 
     await this.handleProviderSessionResponse_(
       await this.paymentProviderService_.authorizePayment(
@@ -549,13 +610,20 @@ export default class PaymentModuleService
       sharedContext
     )
 
-    await this.handleProviderSessionResponse_(
-      await this.paymentProviderService_.cancelPayment(
-        paymentSession.provider_id,
-        paymentSession.data
-      ),
-      sharedContext
-    )
+    if (paymentSession.provider_id) {
+      await this.handleProviderSessionResponse_(
+        await this.paymentProviderService_.cancelPayment(
+          paymentSession.provider_id,
+          paymentSession.data
+        ),
+        sharedContext
+      )
+    } else {
+      await this.paymentSessionService_.update(
+        { id, status: PaymentSessionStatus.CANCELED },
+        sharedContext
+      )
+    }
 
     return this.retrievePaymentSession(id, {}, sharedContext)
   }

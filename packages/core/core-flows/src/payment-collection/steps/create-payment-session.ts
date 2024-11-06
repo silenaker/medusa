@@ -8,7 +8,7 @@ import { StepResponse, createStep } from "@medusajs/framework/workflows-sdk"
 
 export interface CreatePaymentSessionStepInput {
   payment_collection_id: string
-  provider_id: string
+  provider_id?: string
   provider_token?: string
   amount?: BigNumberInput
   context?: PaymentProviderContext

@@ -226,7 +226,7 @@ export interface CreatePaymentSessionDTO {
   /**
    * The provider's ID.
    */
-  provider_id: string
+  provider_id?: string | null
 
   /**
    * The provider's payment method token
@@ -257,6 +257,11 @@ export interface UpdatePaymentSessionDTO {
    * The payment session's ID.
    */
   id: string
+
+  /**
+   * The provider's ID.
+   */
+  provider_id?: string | null
 
   /**
    * The provider's payment method token

@@ -566,7 +566,7 @@ export interface PaymentSessionDTO {
   /**
    * The ID of the associated payment provider.
    */
-  provider_id: string
+  provider_id: string | null
 
   /**
    * The data necessary for the payment provider to process the payment session.
