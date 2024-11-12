@@ -112,7 +112,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
           : undefined,
       metadata: metadata as Stripe.MetadataParam,
       capture_method: this.options_.capture ? "automatic" : "manual",
-      expand: ["latest_charge"],
+      expand: ["latest_charge", "payment_method"],
       ...intentRequestData,
     }
 
@@ -164,7 +164,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     try {
       const intent = await this.stripe_.paymentIntents.confirm(id, {
         payment_method: data.token,
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -185,7 +185,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
     try {
       const intent = await this.stripe_.paymentIntents.cancel(id, {
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -218,7 +218,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
           ? getSmallestUnit(captureAmount, currency)
           : undefined,
         final_capture: false,
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -262,7 +262,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
           : undefined,
       })
       const intent = await this.stripe_.paymentIntents.retrieve(id, {
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -280,7 +280,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
     try {
       const intent = await this.stripe_.paymentIntents.retrieve(id, {
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -351,7 +351,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       }
       const intent = await this.stripe_.paymentIntents.update(id, {
         ...updateParams,
-        expand: ["latest_charge"],
+        expand: ["latest_charge", "payment_method"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -370,7 +370,10 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     let intent: Stripe.PaymentIntent
 
     if (event.data.object.object === "payment_intent") {
-      intent = event.data.object
+      intent = await this.stripe_.paymentIntents.retrieve(
+        event.data.object.id,
+        { expand: ["latest_charge", "payment_method"] }
+      )
     } else if (event.data.object.object === "charge") {
       if (!event.data.object.payment_intent) {
         throw new Error(
@@ -379,7 +382,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       }
       intent = await this.stripe_.paymentIntents.retrieve(
         event.data.object.payment_intent as string,
-        { expand: ["latest_charge"] }
+        { expand: ["latest_charge", "payment_method"] }
       )
     } else if (event.data.object.object === "invoice") {
       // TODO
