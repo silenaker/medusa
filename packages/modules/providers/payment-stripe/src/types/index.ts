@@ -51,4 +51,5 @@ export const PaymentProviderKeys = {
   GIROPAY: "stripe-giropay",
   IDEAL: "stripe-ideal",
   PRZELEWY_24: "stripe-przelewy24",
+  INVOICE: "stripe-invoice",
 }

@@ -6,6 +6,7 @@ import {
   StripeIdealService,
   StripeProviderService,
   StripePrzelewy24Service,
+  StripeInvoiceService,
 } from "./services"
 
 const services = [
@@ -15,6 +16,7 @@ const services = [
   StripeIdealService,
   StripeProviderService,
   StripePrzelewy24Service,
+  StripeInvoiceService,
 ]
 
 const providerExport: ModuleProviderExports = {

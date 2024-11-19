@@ -73,87 +73,180 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
   async initiatePayment(
     data: CreatePaymentProviderSession
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    const intentRequestData = this.getPaymentIntentOptions()
+    const { currency_code, amount, token, context } = data
     const {
       billing_address,
       shipping_address,
       email,
       customer,
       payment_description,
+      invoice,
       ...metadata
-    } = data.context
-    const { currency_code, amount, token } = data
+    } = context
 
-    const description = (payment_description ??
-      this.options_?.paymentDescription) as string
+    const customerName = `${customer?.first_name ?? ""} ${
+      customer?.last_name ?? ""
+    }`.trim()
+    const customerPhone = customer?.phone ?? ""
+    const intentOptions = this.getPaymentIntentOptions()
 
-    const intentRequest: Stripe.PaymentIntentCreateParams = {
-      description,
-      amount: getSmallestUnit(amount, currency_code),
-      currency: currency_code,
-      payment_method: token,
-      confirm: !!token,
-      shipping:
-        shipping_address || customer
-          ? {
-              address: {
-                city: shipping_address?.city ?? undefined,
-                country: shipping_address?.country_code ?? undefined,
-                line1: shipping_address?.address_1 ?? undefined,
-                line2: shipping_address?.address_2 ?? undefined,
-                postal_code: shipping_address?.postal_code ?? undefined,
-                state: shipping_address?.province ?? undefined,
-              },
-              name: `${customer?.first_name ?? ""} ${
-                customer?.last_name ?? ""
-              }`.trim(),
-              phone: shipping_address?.phone ?? undefined,
-            }
-          : undefined,
-      metadata: metadata as Stripe.MetadataParam,
-      capture_method: this.options_.capture ? "automatic" : "manual",
-      expand: ["latest_charge", "payment_method"],
-      ...intentRequestData,
-    }
-
-    const automaticPaymentMethods = this.options_?.automaticPaymentMethods
-    if (automaticPaymentMethods) {
-      intentRequest.automatic_payment_methods =
-        typeof automaticPaymentMethods === "boolean"
-          ? { enabled: true }
-          : automaticPaymentMethods
-    }
+    let stripeCustomerId: string | undefined
+    let shipping:
+      | {
+          address: Stripe.AddressParam
+          name: string
+          phone?: string
+        }
+      | undefined
 
     if (customer?.metadata?.stripe_id) {
-      intentRequest.customer = customer.metadata.stripe_id as string
-    } else if (this.options_.createCustomer) {
-      let stripeCustomer
+      stripeCustomerId = customer.metadata.stripe_id as string
+    } else if (this.options_.createCustomer || invoice) {
       try {
-        stripeCustomer = await this.stripe_.customers.create({
-          email,
-        })
+        if (customer?.email) {
+          const list = await this.stripe_.customers.list({
+            email: customer.email,
+            limit: 100,
+          })
+          for (let i = 0; i < list.data.length; i++) {
+            const stripeCustomer = list.data[i]
+            if (
+              customer.id &&
+              customer.id === stripeCustomer.metadata.medusa_id
+            ) {
+              stripeCustomerId = stripeCustomer.id
+              await this.stripe_.customers.update(stripeCustomerId, {
+                name: customerName,
+                phone: customerPhone,
+                address: {
+                  city: billing_address?.city ?? "",
+                  country: billing_address?.country_code ?? "",
+                  line1: billing_address?.address_1 ?? "",
+                  line2: billing_address?.address_2 ?? "",
+                  postal_code: billing_address?.postal_code ?? "",
+                  state: billing_address?.province ?? "",
+                },
+              })
+              break
+            }
+          }
+        }
+
+        if (!stripeCustomerId) {
+          const stripeCustomer = await this.stripe_.customers.create({
+            email: customer?.email,
+            name: customerName,
+            phone: customerPhone,
+            metadata: customer?.id && { medusa_id: customer.id },
+          })
+          stripeCustomerId = stripeCustomer.id
+        }
       } catch (e) {
         return this.buildError(
           "An error occurred in initiatePayment when creating a Stripe customer",
           e
         )
       }
-
-      intentRequest.customer = stripeCustomer.id
     }
 
-    try {
-      const intent = await this.stripe_.paymentIntents.create(intentRequest)
-      return {
-        ...(await this.buildResponse(intent)),
-        data: intent as unknown as Record<string, unknown>,
-        context: intent.metadata,
+    if (shipping_address || customer) {
+      shipping = {
+        address: {
+          city: shipping_address?.city ?? "",
+          country: shipping_address?.country_code ?? "",
+          line1: shipping_address?.address_1 ?? "",
+          line2: shipping_address?.address_2 ?? "",
+          postal_code: shipping_address?.postal_code ?? "",
+          state: shipping_address?.province ?? "",
+        },
+        name: customerName,
+        phone: shipping_address?.phone || customerPhone,
       }
-    } catch (e) {
-      return this.buildError(
-        "An error occurred in initiatePayment during the creation of the stripe payment intent",
-        e
-      )
+    }
+
+    if (invoice) {
+      try {
+        let stripeInvoice = await this.stripe_.invoices.create({
+          ...(typeof invoice === "boolean" ? {} : invoice),
+          auto_advance: false,
+          currency: currency_code,
+          customer: stripeCustomerId,
+          shipping_details: shipping,
+          payment_settings: {
+            payment_method_types:
+              intentOptions.payment_method_types as Stripe.InvoiceCreateParams.PaymentSettings.PaymentMethodType[],
+          },
+        })
+        await this.stripe_.invoiceItems.create({
+          customer: stripeCustomerId!,
+          invoice: stripeInvoice.id,
+          currency: currency_code,
+          amount: getSmallestUnit(amount, currency_code),
+          description: payment_description ?? this.options_.paymentDescription,
+        })
+        stripeInvoice = await this.stripe_.invoices.finalizeInvoice(
+          stripeInvoice.id,
+          { auto_advance: false }
+        )
+        const intent = await this.stripe_.paymentIntents.update(
+          stripeInvoice.payment_intent as string,
+          {
+            shipping,
+            metadata: metadata as Stripe.MetadataParam,
+            description:
+              payment_description ?? this.options_.paymentDescription,
+            setup_future_usage: intentOptions.setup_future_usage,
+            expand: ["latest_charge", "payment_method", "invoice"],
+          }
+        )
+        return {
+          ...(await this.buildResponse(intent)),
+          data: intent as unknown as Record<string, unknown>,
+          context: intent.metadata,
+        }
+      } catch (e) {
+        return this.buildError(
+          "An error occurred in initiatePayment during the creation of the stripe invoice",
+          e
+        )
+      }
+    } else {
+      const createParams: Stripe.PaymentIntentCreateParams = {
+        ...intentOptions,
+        amount: getSmallestUnit(amount, currency_code),
+        currency: currency_code,
+        payment_method: token,
+        confirm: !!token,
+        customer: stripeCustomerId,
+        shipping,
+        metadata: metadata as Stripe.MetadataParam,
+        description: payment_description ?? this.options_.paymentDescription,
+        expand: ["latest_charge", "payment_method"],
+        capture_method:
+          typeof this.options_.capture === "boolean"
+            ? this.options_.capture
+              ? "automatic"
+              : "manual"
+            : intentOptions.capture_method ?? "automatic",
+        automatic_payment_methods:
+          this.options_.automaticPaymentMethods === true
+            ? { enabled: true }
+            : { enabled: false, ...this.options_.automaticPaymentMethods },
+      }
+
+      try {
+        const intent = await this.stripe_.paymentIntents.create(createParams)
+        return {
+          ...(await this.buildResponse(intent)),
+          data: intent as unknown as Record<string, unknown>,
+          context: intent.metadata,
+        }
+      } catch (e) {
+        return this.buildError(
+          "An error occurred in initiatePayment during the creation of the stripe payment intent",
+          e
+        )
+      }
     }
   }
 
@@ -164,7 +257,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     try {
       const intent = await this.stripe_.paymentIntents.confirm(id, {
         payment_method: data.token,
-        expand: ["latest_charge", "payment_method"],
+        expand: ["latest_charge", "payment_method", "invoice"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -182,11 +275,24 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
   async cancelPayment(
     paymentSessionData: PaymentProviderSessionResponse["data"]
   ): Promise<PaymentProviderError | PaymentProviderSessionResponse> {
-    const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
+    const { id, invoice } =
+      paymentSessionData as unknown as Stripe.PaymentIntent
     try {
-      const intent = await this.stripe_.paymentIntents.cancel(id, {
-        expand: ["latest_charge", "payment_method"],
-      })
+      let intent: Stripe.PaymentIntent
+
+      if (invoice) {
+        await this.stripe_.invoices.voidInvoice(
+          typeof invoice === "string" ? invoice : invoice.id
+        )
+        intent = await this.stripe_.paymentIntents.retrieve(id, {
+          expand: ["latest_charge", "payment_method", "invoice"],
+        })
+      } else {
+        intent = await this.stripe_.paymentIntents.cancel(id, {
+          expand: ["latest_charge", "payment_method"],
+        })
+      }
+
       return {
         ...(await this.buildResponse(intent)),
         data: intent as unknown as Record<string, unknown>,
@@ -262,7 +368,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
           : undefined,
       })
       const intent = await this.stripe_.paymentIntents.retrieve(id, {
-        expand: ["latest_charge", "payment_method"],
+        expand: ["latest_charge", "payment_method", "invoice"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -280,7 +386,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     const { id } = paymentSessionData as unknown as Stripe.PaymentIntent
     try {
       const intent = await this.stripe_.paymentIntents.retrieve(id, {
-        expand: ["latest_charge", "payment_method"],
+        expand: ["latest_charge", "payment_method", "invoice"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -307,6 +413,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
           email,
           customer,
           payment_description,
+          invoice,
           ...metadata
         } = context
         if (payment_description) {
@@ -314,21 +421,21 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
         }
         if (shipping_address || customer) {
           let address: Stripe.AddressParam = {
-            city: shipping?.address?.city ?? undefined,
-            country: shipping?.address?.country ?? undefined,
-            line1: shipping?.address?.line1 ?? undefined,
-            line2: shipping?.address?.line2 ?? undefined,
-            postal_code: shipping?.address?.postal_code ?? undefined,
-            state: shipping?.address?.state ?? undefined,
+            city: shipping?.address?.city ?? "",
+            country: shipping?.address?.country ?? "",
+            line1: shipping?.address?.line1 ?? "",
+            line2: shipping?.address?.line2 ?? "",
+            postal_code: shipping?.address?.postal_code ?? "",
+            state: shipping?.address?.state ?? "",
           }
           if (shipping_address) {
             address = {
-              city: shipping_address.city ?? undefined,
-              country: shipping_address.country_code ?? undefined,
-              line1: shipping_address.address_1 ?? undefined,
-              line2: shipping_address.address_2 ?? undefined,
-              postal_code: shipping_address.postal_code ?? undefined,
-              state: shipping_address.province ?? undefined,
+              city: shipping_address.city ?? "",
+              country: shipping_address.country_code ?? "",
+              line1: shipping_address.address_1 ?? "",
+              line2: shipping_address.address_2 ?? "",
+              postal_code: shipping_address.postal_code ?? "",
+              state: shipping_address.province ?? "",
             }
           }
           updateParams.shipping = {
@@ -351,7 +458,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       }
       const intent = await this.stripe_.paymentIntents.update(id, {
         ...updateParams,
-        expand: ["latest_charge", "payment_method"],
+        expand: ["latest_charge", "payment_method", "invoice"],
       })
       return {
         ...(await this.buildResponse(intent)),
@@ -372,7 +479,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
     if (event.data.object.object === "payment_intent") {
       intent = await this.stripe_.paymentIntents.retrieve(
         event.data.object.id,
-        { expand: ["latest_charge", "payment_method"] }
+        { expand: ["latest_charge", "payment_method", "invoice"] }
       )
     } else if (event.data.object.object === "charge") {
       if (!event.data.object.payment_intent) {
@@ -382,7 +489,7 @@ abstract class StripeBase extends AbstractPaymentProvider<StripeOptions> {
       }
       intent = await this.stripe_.paymentIntents.retrieve(
         event.data.object.payment_intent as string,
-        { expand: ["latest_charge", "payment_method"] }
+        { expand: ["latest_charge", "payment_method", "invoice"] }
       )
     } else if (event.data.object.object === "invoice") {
       // TODO
