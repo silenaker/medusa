@@ -11,6 +11,7 @@ import {
   FilterablePaymentProviderProps,
   FilterablePaymentSessionProps,
   FindConfig,
+  IEventBusModuleService,
   IPaymentModuleService,
   ModuleJoinerConfig,
   ModulesSdkTypes,
@@ -36,6 +37,7 @@ import {
   MathBN,
   MedusaContext,
   MedusaError,
+  Modules,
   ModulesSdkUtils,
   PaymentCollectionStatus,
   PaymentSessionStatus,
@@ -50,7 +52,11 @@ import {
   RefundReason,
 } from "@models"
 import { joinerConfig } from "../joiner-config"
-import { PaymentModuleOptions } from "../types"
+import {
+  PaymentCollectionEventData,
+  PaymentCollectionEvents,
+  PaymentModuleOptions,
+} from "../types"
 import PaymentProviderService from "./payment-provider"
 
 type InjectedDependencies = {
@@ -61,6 +67,7 @@ type InjectedDependencies = {
   paymentSessionService: ModulesSdkTypes.IMedusaInternalService<any>
   paymentCollectionService: ModulesSdkTypes.IMedusaInternalService<any>
   paymentProviderService: PaymentProviderService
+  [Modules.EVENT_BUS]?: IEventBusModuleService
 }
 
 const generateMethodForModels = {
@@ -91,6 +98,7 @@ export default class PaymentModuleService
   protected paymentSessionService_: ModulesSdkTypes.IMedusaInternalService<PaymentSession>
   protected paymentCollectionService_: ModulesSdkTypes.IMedusaInternalService<PaymentCollection>
   protected paymentProviderService_: PaymentProviderService
+  protected readonly eventBusModuleService_?: IEventBusModuleService
 
   constructor(
     {
@@ -101,6 +109,7 @@ export default class PaymentModuleService
       paymentSessionService,
       paymentProviderService,
       paymentCollectionService,
+      [Modules.EVENT_BUS]: eventBusModuleService,
     }: InjectedDependencies,
     protected readonly options: PaymentModuleOptions
   ) {
@@ -115,6 +124,7 @@ export default class PaymentModuleService
     this.paymentSessionService_ = paymentSessionService
     this.paymentProviderService_ = paymentProviderService
     this.paymentCollectionService_ = paymentCollectionService
+    this.eventBusModuleService_ = eventBusModuleService
   }
 
   __joinerConfig(): ModuleJoinerConfig {
@@ -1174,6 +1184,10 @@ export default class PaymentModuleService
           sharedContext
         )
         await this.maybeUpdatePaymentCollection_(payment.payment_collection_id)
+        await this.eventBusModuleService_?.emit<PaymentCollectionEventData>({
+          name: PaymentCollectionEvents.COLLECTION_UPDATED,
+          data: { id: payment.payment_collection_id },
+        })
         break
       }
 
@@ -1191,6 +1205,7 @@ export default class PaymentModuleService
         )
 
         let payment = session.payment
+        let emitEvent = false
 
         if (!payment) {
           const { id } = await this.authorizePaymentSession_(
@@ -1206,6 +1221,7 @@ export default class PaymentModuleService
             },
             sharedContext
           )
+          emitEvent = true
         }
 
         const _capturedAmount = payment.captures.reduce(
@@ -1227,6 +1243,7 @@ export default class PaymentModuleService
             },
             sharedContext
           )
+          emitEvent = true
         }
         if (MathBN.gt(refunded_amount, _refundedAmount)) {
           await this.refundPayment_(
@@ -1239,9 +1256,16 @@ export default class PaymentModuleService
             },
             sharedContext
           )
+          emitEvent = true
         }
         await this.maybeUpdatePaymentSession_(session_id, data)
         await this.maybeUpdatePaymentCollection_(session.payment_collection_id)
+        if (emitEvent) {
+          await this.eventBusModuleService_?.emit<PaymentCollectionEventData>({
+            name: PaymentCollectionEvents.COLLECTION_UPDATED,
+            data: { id: session.payment_collection_id },
+          })
+        }
         break
       }
 
@@ -1250,7 +1274,7 @@ export default class PaymentModuleService
       case "processing": {
         const session = await this.paymentSessionService_.retrieve(
           session_id,
-          { select: ["status"] },
+          { select: ["status", "payment_collection_id"] },
           sharedContext
         )
         if (
@@ -1264,6 +1288,10 @@ export default class PaymentModuleService
             { id: session_id, data, status },
             sharedContext
           )
+          await this.eventBusModuleService_?.emit<PaymentCollectionEventData>({
+            name: PaymentCollectionEvents.COLLECTION_UPDATED,
+            data: { id: session.payment_collection_id },
+          })
         }
         break
       }
@@ -1274,6 +1302,10 @@ export default class PaymentModuleService
           sharedContext
         )
         await this.maybeUpdatePaymentCollection_(session.payment_collection_id)
+        await this.eventBusModuleService_?.emit<PaymentCollectionEventData>({
+          name: PaymentCollectionEvents.COLLECTION_UPDATED,
+          data: { id: session.payment_collection_id },
+        })
         break
       }
       default: {

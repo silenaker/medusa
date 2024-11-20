@@ -32,3 +32,11 @@ export type PaymentModuleOptions = Partial<ModuleServiceInitializeOptions> & {
     options?: Record<string, unknown>
   }[]
 }
+
+export type PaymentCollectionEventData = {
+  id: string
+}
+
+export enum PaymentCollectionEvents {
+  COLLECTION_UPDATED = "payment-collection.updated",
+}

@@ -199,7 +199,7 @@ export const ModulesDefinition: {
     label: upperCaseFirst(Modules.PAYMENT),
     isRequired: false,
     isQueryable: true,
-    dependencies: ["logger"],
+    dependencies: ["logger", Modules.EVENT_BUS],
     defaultModuleDeclaration: {
       scope: MODULE_SCOPE.INTERNAL,
       resources: MODULE_RESOURCE_TYPE.SHARED,
