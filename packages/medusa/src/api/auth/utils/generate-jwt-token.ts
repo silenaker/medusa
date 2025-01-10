@@ -12,7 +12,7 @@ export function generateJwtTokenForAuthIdentity(
   }: { secret: string | undefined; expiresIn: string | undefined }
 ) {
   const entityIdKey = `${actorType}_id`
-  const entityId = authIdentity?.app_metadata?.[entityIdKey] as
+  const entityId = authIdentity.app_metadata?.[entityIdKey] as
     | string
     | undefined
 
@@ -24,6 +24,7 @@ export function generateJwtTokenForAuthIdentity(
       app_metadata: {
         [entityIdKey]: entityId,
       },
+      user_metadata: authIdentity?.provider_identities?.[0].user_metadata,
     },
     {
       secret,

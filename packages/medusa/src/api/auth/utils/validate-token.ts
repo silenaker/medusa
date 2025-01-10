@@ -60,6 +60,7 @@ export const validateToken = () => {
       auth_identity_id: verified.auth_identity_id!,
       actor_id: providerIdentity.entity_id,
       app_metadata: {},
+      user_metadata: providerIdentity.user_metadata,
     }
 
     return next()
