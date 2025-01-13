@@ -1,6 +1,6 @@
 import { HttpTypes } from "@medusajs/types"
 import { Client } from "../client"
-import { Config } from "../types"
+import { Config, FetchArgs } from "../types"
 
 export class Auth {
   private client: Client
@@ -54,17 +54,17 @@ export class Auth {
   }
 
   // The callback expects all query parameters from the Oauth callback to be passed to the backend, and the provider is in charge of parsing and validating them
-  callback = async (
-    actor: string,
-    method: string,
-    query?: Record<string, unknown>
-  ) => {
+  callback = async ({
+    actor,
+    provider,
+    ...reqInit
+  }: {
+    actor: string
+    provider: string
+  } & FetchArgs) => {
     const { token } = await this.client.fetch<{ token: string }>(
-      `/auth/${actor}/${method}/callback`,
-      {
-        method: "GET",
-        query,
-      }
+      `/auth/${actor}/${provider}/callback`,
+      reqInit
     )
 
     await this.setToken_(token)
