@@ -341,11 +341,12 @@ export default class AuthModuleService
           )
         }
 
-        const updatedProviderIdentity =
+        const updatedProviderIdentity = (
           await this.providerIdentityService_.update({
             id: providerIdentityData.id,
             ...data,
           })
+        )[0]
 
         const serializedResponse =
           await this.baseRepository_.serialize<AuthTypes.AuthIdentityDTO>(
