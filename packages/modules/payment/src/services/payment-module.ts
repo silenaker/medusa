@@ -380,6 +380,11 @@ export default class PaymentModuleService
         {},
         sharedContext
       )
+    } else {
+      await this.eventBusModuleService_?.emit<PaymentCollectionEventData>({
+        name: PaymentCollectionEvents.COLLECTION_UPDATED,
+        data: { id: paymentCollectionId },
+      })
     }
 
     return this.baseRepository_.serialize(paymentSession, { populate: true })
